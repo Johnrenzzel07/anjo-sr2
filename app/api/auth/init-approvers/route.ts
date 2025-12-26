@@ -16,7 +16,7 @@ const APPROVERS: Array<{
   { name: 'Mitch Alforque', email: 'mitch.alforque@anjoworld.com', department: 'Sales', role: 'APPROVER' },
   { name: 'Stella Ong', email: 'stella.ong@anjoworld.com', department: 'Finance', role: 'APPROVER' },
   { name: 'Nelson Judaya', email: 'nelson.judaya@anjoworld.com', department: 'Marketing', role: 'APPROVER' },
-  { name: 'Chester Lim', email: 'clim@anjoworld.com', department: 'Other', role: 'SUPER_ADMIN' },
+  { name: 'Chester Lim', email: 'clim@anjoworld.com', department: 'President', role: 'SUPER_ADMIN' },
 ];
 
 export async function POST(request: NextRequest) {

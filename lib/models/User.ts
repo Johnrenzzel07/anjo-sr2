@@ -11,6 +11,7 @@ export type Department =
   | 'Sales' 
   | 'Finance' 
   | 'Marketing' 
+  | 'President'
   | 'Other';
 
 export interface IUser {
@@ -50,7 +51,7 @@ const UserSchema = new Schema<IUser>({
   },
   department: {
     type: String,
-    enum: ['Maintenance', 'IT Department', 'IT', 'Belmont One', 'Operations', 'HR', 'Sales', 'Finance', 'Marketing', 'Other'],
+    enum: ['Maintenance', 'IT Department', 'IT', 'Belmont One', 'Operations', 'HR', 'Sales', 'Finance', 'Marketing', 'President', 'Other'],
     required: true,
   },
   isActive: {
