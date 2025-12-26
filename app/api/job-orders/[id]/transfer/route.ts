@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import JobOrder from '@/lib/models/JobOrder';
 import PurchaseOrder from '@/lib/models/PurchaseOrder';
-import { MaterialTransferItem } from '@/types';
+import { MaterialTransferItem, MaterialTransferInfo } from '@/types';
 
 export async function PATCH(
   request: Request,
@@ -36,8 +36,11 @@ export async function PATCH(
     }
 
     // Initialize or update material transfer
-    const existingTransfer = jobOrder.materialTransfer || { items: [] };
-    const updatedTransfer = {
+    const existingTransfer: MaterialTransferInfo = jobOrder.materialTransfer || {
+      items: [],
+      transferCompleted: false,
+    };
+    const updatedTransfer: MaterialTransferInfo = {
       items: body.items || existingTransfer.items || [],
       transferNotes: body.transferNotes !== undefined ? body.transferNotes : existingTransfer.transferNotes,
       transferCompleted: body.transferCompleted !== undefined ? body.transferCompleted : (existingTransfer.transferCompleted || false),
@@ -46,7 +49,7 @@ export async function PATCH(
     };
 
     // Update job order
-    jobOrder.materialTransfer = updatedTransfer as any;
+    jobOrder.materialTransfer = updatedTransfer;
     
     // If transfer is completed, ensure Job Order is IN_PROGRESS (if not already completed/closed)
     if (body.transferCompleted && jobOrder.status !== 'COMPLETED' && jobOrder.status !== 'CLOSED') {

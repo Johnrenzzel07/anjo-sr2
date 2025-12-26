@@ -2,7 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  serverExternalPackages: ['mongoose'],
+  experimental: {
+    serverComponentsExternalPackages: ['mongoose'],
+  },
   // Configure webpack to handle mongoose properly
   webpack: (config, { isServer }) => {
     if (isServer) {
