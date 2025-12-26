@@ -506,14 +506,14 @@ export default function PurchaseOrderDetailPage() {
 
             {/* Post-Approval Actions: Mark as Purchased/Received */}
             {/* Show this block when PO is fully approved, purchased, or received */}
-            {(purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED' || purchaseOrder.status === 'RECEIVED') && 
-             purchaseOrder.approvals?.some((a: any) => a.role === 'FINANCE' && a.action === 'APPROVED') &&
-             purchaseOrder.approvals?.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED') && (
+            {purchaseOrder.approvals?.some((a: any) => a.role === 'FINANCE' && a.action === 'APPROVED') &&
+             purchaseOrder.approvals?.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED') && 
+             (purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED' || purchaseOrder.status === 'RECEIVED' || purchaseOrder.status === 'CLOSED') && (
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <h3 className="text-md font-semibold text-gray-900 mb-3">Post-Approval Actions</h3>
                 <div className="space-y-3">
                   {/* Mark as Purchased */}
-                  {purchaseOrder.status !== 'PURCHASED' && purchaseOrder.status !== 'RECEIVED' && purchaseOrder.status !== 'CLOSED' && (
+                  {purchaseOrder.status === 'APPROVED' && (
                     <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
                       <p className="text-sm text-gray-700 mb-2">
                         <strong>Step 1:</strong> Mark as Purchased when the order has been placed with the supplier.
@@ -547,7 +547,7 @@ export default function PurchaseOrderDetailPage() {
                   )}
 
                   {/* Mark as Received */}
-                  {purchaseOrder.status === 'PURCHASED' && purchaseOrder.status !== 'RECEIVED' && purchaseOrder.status !== 'CLOSED' && (
+                  {purchaseOrder.status === 'PURCHASED' && (
                     <div className="p-3 bg-green-50 rounded-md border border-green-200">
                       <p className="text-sm text-gray-700 mb-2">
                         <strong>Step 2:</strong> Mark as Received when the items have been delivered. This will automatically set the Job Order status to IN_PROGRESS.

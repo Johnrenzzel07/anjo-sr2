@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ServiceRequest, JobOrder, PurchaseOrder } from '@/types';
+import { ServiceRequest, JobOrder, PurchaseOrder, JobOrderType } from '@/types';
 import ServiceRequestCard from '@/components/ServiceRequestCard';
 import JobOrderCard from '@/components/JobOrderCard';
 import JobOrderForm from '@/components/JobOrderForm';
@@ -14,6 +14,11 @@ import Link from 'next/link';
 
 export default function AdminDashboard() {
   const router = useRouter();
+  
+  // Helper to normalize department names (e.g., 'IT' vs 'IT Department')
+  const normalizeDept = (dept: string | undefined) =>
+    (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
+  
   const [user, setUser] = useState<any>(null);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
@@ -65,7 +70,7 @@ export default function AdminDashboard() {
       // Always append new items (never replace)
       setServiceRequests(prev => {
         const existingIds = new Set(prev.map(sr => sr.id || sr._id?.toString()));
-        const newItems = normalizedSRs.filter(sr => !existingIds.has(sr.id || sr._id?.toString()));
+        const newItems = normalizedSRs.filter((sr: ServiceRequest) => !existingIds.has(sr.id || sr._id?.toString()));
         return [...prev, ...newItems];
       });
       
@@ -160,7 +165,7 @@ export default function AdminDashboard() {
         // Only append if we have new items and they're not duplicates
         setServiceRequests(prev => {
           const existingIds = new Set(prev.map(sr => sr.id || sr._id?.toString()));
-          const newItems = normalizedSRs.filter(sr => !existingIds.has(sr.id || sr._id?.toString()));
+          const newItems = normalizedSRs.filter((sr: ServiceRequest) => !existingIds.has(sr.id || sr._id?.toString()));
           return [...prev, ...newItems];
         });
       }
@@ -272,6 +277,7 @@ export default function AdminDashboard() {
   };
 
   const handleSubmitJO = async (data: {
+    type: JobOrderType;
     workDescription?: string;
     materials: any[];
     manpower: any;

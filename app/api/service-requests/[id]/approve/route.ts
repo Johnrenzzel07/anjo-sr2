@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import ServiceRequest from '@/lib/models/ServiceRequest';
 import { getAuthUser } from '@/lib/auth';
-import { ApprovalAction } from '@/types';
+import { ApprovalAction, UserRole } from '@/types';
 
 export async function POST(
   request: NextRequest,
@@ -65,13 +65,14 @@ export async function POST(
     }
 
     // Map user role to approval role
-    let approvalRole: string;
+    let approvalRole: UserRole;
     if (isDepartmentHead || (userRole === 'APPROVER' && userDeptNorm === srDeptNorm)) {
       approvalRole = 'DEPARTMENT_HEAD';
     } else if (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN') {
       approvalRole = 'MANAGEMENT';
     } else {
-      approvalRole = userRole;
+      // Type assertion needed since userRole might not match UserRole exactly
+      approvalRole = userRole as UserRole;
     }
 
     // Add approval

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import PurchaseOrder from '@/lib/models/PurchaseOrder';
-import { ApprovalAction } from '@/types';
+import { ApprovalAction, UserRole } from '@/types';
 
 export async function POST(
   request: Request,
@@ -56,7 +56,7 @@ export async function POST(
     }
 
     // Map role for approval record
-    let approvalRole: string;
+    let approvalRole: UserRole;
     if (isFinance) {
       approvalRole = 'FINANCE';
     } else if (isPresident) {

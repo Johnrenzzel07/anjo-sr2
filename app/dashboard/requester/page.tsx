@@ -84,7 +84,7 @@ export default function RequesterDashboard() {
           // Only append if we have new items and they're not duplicates
           setServiceRequests(prev => {
             const existingIds = new Set(prev.map(sr => sr.id || sr._id?.toString()));
-            const newItems = normalized.filter(sr => !existingIds.has(sr.id || sr._id?.toString()));
+            const newItems = normalized.filter((sr: ServiceRequest) => !existingIds.has(sr.id || sr._id?.toString()));
             return [...prev, ...newItems];
           });
         }
@@ -128,11 +128,11 @@ export default function RequesterDashboard() {
         }));
         
         // Always append new items (never replace)
-        setServiceRequests(prev => {
-          const existingIds = new Set(prev.map(sr => sr.id || sr._id?.toString()));
-          const newItems = normalized.filter(sr => !existingIds.has(sr.id || sr._id?.toString()));
-          return [...prev, ...newItems];
-        });
+         setServiceRequests(prev => {
+           const existingIds = new Set(prev.map(sr => sr.id || sr._id?.toString()));
+           const newItems = normalized.filter((sr: ServiceRequest) => !existingIds.has(sr.id || sr._id?.toString()));
+           return [...prev, ...newItems];
+         });
         
         // Update pagination state
         const fetchedCount = data.serviceRequests?.length || 0;

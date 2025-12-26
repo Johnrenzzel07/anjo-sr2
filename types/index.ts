@@ -9,7 +9,7 @@ export type JOStatus =
   | 'IN_PROGRESS' 
   | 'COMPLETED' 
   | 'CLOSED';
-export type UserRole = 'OPERATIONS' | 'DEPARTMENT_HEAD' | 'FINANCE' | 'MANAGEMENT' | 'SUPPLIER';
+export type UserRole = 'OPERATIONS' | 'DEPARTMENT_HEAD' | 'FINANCE' | 'MANAGEMENT' | 'SUPPLIER' | 'SUPER_ADMIN' | 'ADMIN';
 export type SourceType = 'IN_HOUSE' | 'PURCHASE';
 export type JobOrderType = 'SERVICE' | 'MATERIAL_REQUISITION';
 export type POStatus = 
@@ -112,7 +112,7 @@ export interface Approval {
   role: UserRole;
   userId: string;
   userName: string;
-  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED';
+  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED' | 'SUBMITTED';
   timestamp: string;
   comments?: string;
 }
@@ -194,7 +194,7 @@ export interface ApprovalAction {
   role: UserRole;
   userId: string;
   userName: string;
-  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED';
+  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED' | 'SUBMITTED';
   comments?: string;
 }
 
