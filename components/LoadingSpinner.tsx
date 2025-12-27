@@ -15,25 +15,19 @@ export default function LoadingSpinner({
   color = 'black',
   className = ''
 }: LoadingSpinnerProps) {
-  const [NewtonsCradle, setNewtonsCradle] = useState<any>(null);
+  const [isRegistered, setIsRegistered] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       // Dynamically import to avoid SSR issues
-      import('ldrs/react').then((ldrs) => {
-        // Check if register method exists
-        if (ldrs.NewtonsCradle && typeof ldrs.NewtonsCradle.register === 'function') {
-          ldrs.NewtonsCradle.register();
-        }
-        setNewtonsCradle(() => ldrs.NewtonsCradle);
+      import('ldrs').then((ldrs) => {
+        ldrs.newtonsCradle.register();
+        setIsRegistered(true);
       });
-      
-      // Import CSS
-      import('ldrs/react/NewtonsCradle.css');
     }
   }, []);
 
-  if (!NewtonsCradle) {
+  if (!isRegistered) {
     // Fallback spinner while loading
     return (
       <div className={`flex items-center justify-center ${className}`}>
@@ -44,7 +38,7 @@ export default function LoadingSpinner({
 
   return (
     <div className={`flex items-center justify-center ${className}`}>
-      <NewtonsCradle
+      <l-newtons-cradle
         size={size}
         speed={speed}
         color={color}

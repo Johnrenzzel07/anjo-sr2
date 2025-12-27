@@ -11,20 +11,21 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.3",
+    "ldrs": "^1.1.9",
+    "mongoose": "^8.20.4",
     "next": "16.1.0",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "mongoose": "^8.20.4",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.3"
+    "react-dom": "19.2.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.5",
     "eslint": "^9",
     "eslint-config-next": "16.1.0",
     "tailwindcss": "^4",
