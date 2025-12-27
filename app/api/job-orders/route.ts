@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import ServiceRequest from '@/lib/models/ServiceRequest';
 import JobOrder from '@/lib/models/JobOrder';
 import { CreateJobOrderInput } from '@/types';
+import { getAuthUser } from '@/lib/auth';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +14,13 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '9', 10);
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const status = searchParams.get('status'); // Optional status filter
+    const department = searchParams.get('department'); // Optional department filter
+    
+    // Get current user if authenticated
+    const authUser = getAuthUser(request);
+    
+    // Helper to normalize department names
+    const normalizeDept = (dept: string) => dept.toLowerCase().replace(/\s+department$/, '').trim();
     
     // Build base query
     let query: any = {};
@@ -20,6 +28,21 @@ export async function GET(request: NextRequest) {
     // Apply status filter if provided
     if (status && status !== 'all') {
       query.status = status;
+    }
+    
+    // Apply department filter if provided or if user is APPROVER with department
+    let departmentFilter = department;
+    if (!departmentFilter && authUser && authUser.role === 'APPROVER' && authUser.department) {
+      departmentFilter = authUser.department;
+    }
+    
+    if (departmentFilter) {
+      const userDeptNorm = normalizeDept(departmentFilter);
+      // Special cases: Operations, Finance, and Purchasing should see ALL Job Orders
+      if (userDeptNorm !== 'operations' && userDeptNorm !== 'finance' && userDeptNorm !== 'purchasing') {
+        // Use regex to match department (case-insensitive, handles "IT" vs "IT Department")
+        query.department = { $regex: new RegExp(`^${userDeptNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') };
+      }
     }
     
     // Use aggregation to sort by status priority, then by createdAt, with pagination
@@ -127,10 +150,11 @@ export async function GET(request: NextRequest) {
       }
     ];
     
-    const [jobOrders, totalCount] = await Promise.all([
-      JobOrder.aggregate(pipeline),
-      JobOrder.countDocuments(query)
-    ]);
+    // Count total matching documents (before pagination) - uses the filtered query
+    const totalCount = await JobOrder.countDocuments(query);
+    
+    // Get paginated results
+    const jobOrders = await JobOrder.aggregate(pipeline);
     
     // Transform to ensure serviceRequest is properly set
     const transformedJobOrders = jobOrders.map((jo: any) => {

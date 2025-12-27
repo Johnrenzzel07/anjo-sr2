@@ -78,7 +78,8 @@ export default function AdminDashboard() {
 
       // Fetch Job Orders count
       const joStatusParam = filterJOStatus !== 'all' ? `&status=${filterJOStatus}` : '';
-      const joRes = await fetch(`/api/job-orders?limit=1&skip=0${joStatusParam}`);
+      const joDeptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
+      const joRes = await fetch(`/api/job-orders?limit=1&skip=0${joStatusParam}${joDeptParam}`);
       const joData = await joRes.json();
       if (joData.totalCount !== undefined) {
         setJoTotalCount(joData.totalCount);
@@ -295,19 +296,13 @@ export default function AdminDashboard() {
       
       const currentJoSkip = resetJO ? 0 : joSkip;
       const statusParam = filterJOStatus !== 'all' ? `&status=${filterJOStatus}` : '';
+      const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
       
-      const joRes = await fetch(`/api/job-orders?limit=9&skip=${currentJoSkip}${statusParam}`);
+      const joRes = await fetch(`/api/job-orders?limit=9&skip=${currentJoSkip}${statusParam}${deptParam}`);
       const joData = await joRes.json();
       
-      // Filter Job Orders based on user role and department
+      // Job Orders are now filtered on the server side, so no need for client-side filtering
       let jos = joData.jobOrders || [];
-      if (user?.role === 'APPROVER' && user?.department) {
-        const userDeptNorm = normalizeDept(user.department);
-        // Special cases: Operations, Finance, and Purchasing should see ALL Job Orders
-        if (userDeptNorm !== 'operations' && userDeptNorm !== 'finance' && userDeptNorm !== 'purchasing') {
-          jos = jos.filter((jo: any) => normalizeDept(jo.department) === userDeptNorm);
-        }
-      }
       
       const normalizedJOs = jos.map((jo: any) => {
         // Normalize serviceRequest field
