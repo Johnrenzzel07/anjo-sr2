@@ -46,10 +46,29 @@ export async function GET(request: NextRequest) {
       { $skip: skip },
       { $limit: limit },
       {
+        $addFields: {
+          srIdString: {
+            $cond: {
+              if: { $eq: [{ $type: '$srId' }, 'string'] },
+              then: '$srId',
+              else: { $toString: '$srId' }
+            }
+          }
+        }
+      },
+      {
         $lookup: {
           from: 'servicerequests',
-          localField: 'srId',
-          foreignField: '_id',
+          let: { srIdStr: '$srIdString' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: [{ $toString: '$_id' }, '$$srIdStr' ]
+                }
+              }
+            }
+          ],
           as: 'srId_populated'
         }
       },

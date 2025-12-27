@@ -290,21 +290,27 @@ export default function AdminDashboard() {
       }
       
       const normalizedJOs = jos.map((jo: any) => {
-        if (jo.serviceRequest) {
-          return {
-            ...jo,
-            id: jo._id?.toString() || jo.id,
-            srId: typeof jo.srId === 'object' ? jo.srId._id?.toString() || jo.srId.id : jo.srId,
+        // Normalize serviceRequest field
+        let serviceRequest = jo.serviceRequest;
+        if (!serviceRequest && typeof jo.srId === 'object' && jo.srId) {
+          // If serviceRequest doesn't exist but srId is populated, use srId
+          serviceRequest = {
+            ...jo.srId,
+            id: jo.srId._id?.toString() || jo.srId.id,
+          };
+        } else if (serviceRequest) {
+          // Ensure serviceRequest has proper id field
+          serviceRequest = {
+            ...serviceRequest,
+            id: serviceRequest.id || serviceRequest._id?.toString(),
           };
         }
+        
         return {
           ...jo,
           id: jo._id?.toString() || jo.id,
           srId: typeof jo.srId === 'object' ? jo.srId._id?.toString() || jo.srId.id : jo.srId,
-          serviceRequest: typeof jo.srId === 'object' && jo.srId ? {
-            ...jo.srId,
-            id: jo.srId._id?.toString() || jo.srId.id,
-          } : jo.serviceRequest,
+          serviceRequest: serviceRequest,
         };
       });
       
@@ -807,7 +813,7 @@ export default function AdminDashboard() {
                         showCreateJO={canCreateJO}
                         onCreateJO={handleCreateJO}
                         currentUser={user}
-                        onApprovalUpdate={fetchData}
+                        onApprovalUpdate={() => fetchData(true)}
                       />
                       {hasJO && (
                         <div className="mt-2 text-sm text-green-600 text-center">
