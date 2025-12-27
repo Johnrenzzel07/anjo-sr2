@@ -5,6 +5,7 @@ import { ServiceRequest, UserRole } from '@/types';
 import StatusBadge from './StatusBadge';
 import Link from 'next/link';
 import ConfirmationModal from './ConfirmationModal';
+import { useToast } from './ToastContainer';
 
 interface ServiceRequestCardProps {
   serviceRequest: ServiceRequest;
@@ -21,6 +22,7 @@ export default function ServiceRequestCard({
   currentUser,
   onApprovalUpdate
 }: ServiceRequestCardProps) {
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<'APPROVED' | 'REJECTED' | null>(null);
@@ -93,15 +95,15 @@ export default function ServiceRequestCard({
       });
 
       if (response.ok) {
-        alert(`Service Request ${action.toLowerCase()} successfully!`);
+        toast.showSuccess(`Service Request ${action.toLowerCase()} successfully!`);
         onApprovalUpdate?.();
       } else {
         const error = await response.json();
-        alert(error.error || `Failed to ${action.toLowerCase()} Service Request`);
+        toast.showError(error.error || `Failed to ${action.toLowerCase()} Service Request`);
       }
     } catch (error) {
       console.error(`Error ${action.toLowerCase()}ing SR:`, error);
-      alert(`Failed to ${action.toLowerCase()} Service Request`);
+      toast.showError(`Failed to ${action.toLowerCase()} Service Request`);
     } finally {
       setLoading(false);
     }
@@ -132,6 +134,21 @@ export default function ServiceRequestCard({
         </p>
         <p className="text-sm text-gray-600 line-clamp-2">{serviceRequest.workDescription}</p>
       </div>
+
+      {/* Needs Approval Card */}
+      {serviceRequest.status === 'SUBMITTED' && !departmentHeadApproved && (
+        <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-md">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-yellow-800">Needs Approval</p>
+              <p className="text-xs text-yellow-700">Waiting for Department Head approval</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Department Head Approval Status (hidden for the Department Head themselves) */}
       {!isDepartmentHead && (serviceRequest.status === 'SUBMITTED' || serviceRequest.status === 'APPROVED') && (

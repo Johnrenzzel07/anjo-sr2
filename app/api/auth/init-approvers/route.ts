@@ -16,6 +16,8 @@ const APPROVERS: Array<{
   { name: 'Mitch Alforque', email: 'mitch.alforque@anjoworld.com', department: 'Sales', role: 'APPROVER' },
   { name: 'Stella Ong', email: 'stella.ong@anjoworld.com', department: 'Finance', role: 'APPROVER' },
   { name: 'Nelson Judaya', email: 'nelson.judaya@anjoworld.com', department: 'Marketing', role: 'APPROVER' },
+  { name: 'Luchie Catalan', email: 'luchie.catalan@anjoworld.com', department: 'Belmont One', role: 'APPROVER' },
+  { name: 'Purchasing Manager', email: 'purchasing@anjoworld.com', department: 'Purchasing', role: 'APPROVER' },
   { name: 'Chester Lim', email: 'clim@anjoworld.com', department: 'President', role: 'SUPER_ADMIN' },
 ];
 

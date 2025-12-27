@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import LoadingSpinner from './LoadingSpinner';
 
 interface Notification {
   _id?: string;
@@ -130,7 +131,11 @@ export default function NotificationBell() {
           />
         </svg>
         {unreadCount > 0 && (
-          <span className="absolute top-0 right-0 block h-5 w-5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center">
+          <span className={`absolute top-0 right-0 block rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center ${
+            unreadCount > 9 
+              ? 'h-5 px-1.5 min-w-[1.25rem]' 
+              : 'h-5 w-5'
+          }`}>
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -162,7 +167,9 @@ export default function NotificationBell() {
             {/* Notifications List */}
             <div className="overflow-y-auto flex-1">
               {loading ? (
-                <div className="p-4 text-center text-gray-500">Loading...</div>
+                <div className="p-4 flex items-center justify-center">
+                  <LoadingSpinner size="40" speed="1.4" color="#6b7280" />
+                </div>
               ) : notifications.length === 0 ? (
                 <div className="p-4 text-center text-gray-500">
                   No notifications

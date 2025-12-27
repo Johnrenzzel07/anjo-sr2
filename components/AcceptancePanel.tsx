@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { JobOrder, UserRole } from '@/types';
+import { useToast } from './ToastContainer';
+import { useConfirm } from './useConfirm';
 
 interface AcceptancePanelProps {
   jobOrder: JobOrder;
@@ -10,6 +12,8 @@ interface AcceptancePanelProps {
 }
 
 export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpdate }: AcceptancePanelProps) {
+  const toast = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(false);
   const [actualStartDate, setActualStartDate] = useState(
     jobOrder.acceptance?.actualStartDate ? jobOrder.acceptance.actualStartDate.split('T')[0] : ''
@@ -27,8 +31,16 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
     jobOrder.acceptance?.dateAccepted ? jobOrder.acceptance.dateAccepted.split('T')[0] : ''
   );
 
+  // Only authorized users (Operations, Admin, Super Admin) can edit acceptance info
+  const userRole = currentUser?.role as string;
+  const canManageAcceptance = userRole === 'OPERATIONS' || 
+                              userRole === 'ADMIN' || 
+                              userRole === 'SUPER_ADMIN' ||
+                              (userRole === 'APPROVER' && (currentUser as any)?.department === 'Operations');
+  
   const canEditAcceptance = 
-    jobOrder.status === 'COMPLETED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'CLOSED';
+    (jobOrder.status === 'COMPLETED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'CLOSED') &&
+    canManageAcceptance;
   
   const canAcceptService = 
     jobOrder.status === 'COMPLETED' && 
@@ -52,15 +64,15 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
       });
 
       if (response.ok) {
-        alert('Acceptance information updated successfully!');
+        toast.showSuccess('Acceptance information updated successfully!');
         onAcceptanceUpdate?.();
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to update acceptance information');
+        toast.showError(error.error || 'Failed to update acceptance information');
       }
     } catch (error) {
       console.error('Error updating acceptance:', error);
-      alert('Failed to update acceptance information');
+      toast.showError('Failed to update acceptance information');
     } finally {
       setLoading(false);
     }
@@ -68,11 +80,15 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
 
   const handleAcceptService = async () => {
     if (!serviceAcceptedBy.trim()) {
-      alert('Please enter the name of the person accepting the service.');
+      toast.showWarning('Please enter the name of the person accepting the service.');
       return;
     }
 
-    if (!confirm('Accept this completed service? This will mark the Job Order as accepted.')) {
+    const proceed = await confirm('Accept this completed service? This will mark the Job Order as accepted.', {
+      title: 'Accept Service',
+      confirmButtonColor: 'green',
+    });
+    if (!proceed) {
       return;
     }
 
@@ -100,19 +116,19 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
         });
 
         if (statusResponse.ok) {
-          alert('Service accepted successfully! Job Order has been closed.');
+          toast.showSuccess('Service accepted successfully! Job Order has been closed.');
           onAcceptanceUpdate?.();
         } else {
-          alert('Acceptance recorded, but failed to close Job Order.');
+          toast.showWarning('Acceptance recorded, but failed to close Job Order.');
           onAcceptanceUpdate?.();
         }
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to accept service');
+        toast.showError(error.error || 'Failed to accept service');
       }
     } catch (error) {
       console.error('Error accepting service:', error);
-      alert('Failed to accept service');
+      toast.showError('Failed to accept service');
     } finally {
       setLoading(false);
     }
@@ -274,6 +290,7 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
           </div>
         </div>
       ) : null}
+      <ConfirmDialog />
     </div>
   );
 }

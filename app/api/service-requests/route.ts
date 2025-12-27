@@ -48,8 +48,31 @@ export async function GET(request: NextRequest) {
       query.department = { $regex: new RegExp(`^${deptNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') };
     }
     
+    // Use aggregation to sort by status priority (SUBMITTED first), then by createdAt
+    const pipeline: any[] = [
+      { $match: query },
+      {
+        $addFields: {
+          statusPriority: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$status', 'SUBMITTED'] }, then: 1 },
+                { case: { $eq: ['$status', 'APPROVED'] }, then: 2 },
+                { case: { $eq: ['$status', 'REJECTED'] }, then: 3 },
+                { case: { $eq: ['$status', 'DRAFT'] }, then: 4 }
+              ],
+              default: 5
+            }
+          }
+        }
+      },
+      { $sort: { statusPriority: 1, createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit }
+    ];
+    
     const [serviceRequests, totalCount] = await Promise.all([
-      ServiceRequest.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      ServiceRequest.aggregate(pipeline),
       ServiceRequest.countDocuments(query)
     ]);
     

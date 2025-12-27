@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -105,7 +106,7 @@ export default function ChangePasswordPage() {
   if (!user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
       </div>
     );
   }
@@ -230,7 +231,14 @@ export default function ChangePasswordPage() {
                     disabled={isLoading}
                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
                   >
-                    {isLoading ? 'Changing...' : 'Change Password'}
+                    {isLoading ? (
+                      <div className="flex items-center gap-2">
+                        <LoadingSpinner size="20" speed="1.4" color="white" />
+                        <span>Changing...</span>
+                      </div>
+                    ) : (
+                      'Change Password'
+                    )}
                   </button>
                 </div>
               </form>

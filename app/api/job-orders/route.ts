@@ -1,16 +1,138 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import ServiceRequest from '@/lib/models/ServiceRequest';
 import JobOrder from '@/lib/models/JobOrder';
 import { CreateJobOrderInput } from '@/types';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    const jobOrders = await JobOrder.find({})
-      .populate('srId', 'srNumber requestedBy department')
-      .sort({ createdAt: -1 });
-    return NextResponse.json({ jobOrders });
+    
+    // Get pagination and filter parameters
+    const searchParams = request.nextUrl.searchParams;
+    const limit = parseInt(searchParams.get('limit') || '9', 10);
+    const skip = parseInt(searchParams.get('skip') || '0', 10);
+    const status = searchParams.get('status'); // Optional status filter
+    
+    // Build base query
+    let query: any = {};
+    
+    // Apply status filter if provided
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+    
+    // Use aggregation to sort by status priority, then by createdAt, with pagination
+    const pipeline: any[] = [
+      { $match: query },
+      {
+        $addFields: {
+          statusPriority: {
+            $switch: {
+              branches: [
+                { case: { $eq: ['$status', 'DRAFT'] }, then: 1 },
+                { case: { $eq: ['$status', 'BUDGET_CLEARED'] }, then: 2 },
+                { case: { $eq: ['$status', 'APPROVED'] }, then: 3 },
+                { case: { $eq: ['$status', 'IN_PROGRESS'] }, then: 4 },
+                { case: { $eq: ['$status', 'COMPLETED'] }, then: 5 },
+                { case: { $eq: ['$status', 'CLOSED'] }, then: 6 }
+              ],
+              default: 99
+            }
+          }
+        }
+      },
+      { $sort: { statusPriority: 1, createdAt: -1 } },
+      { $skip: skip },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'servicerequests',
+          localField: 'srId',
+          foreignField: '_id',
+          as: 'srId_populated'
+        }
+      },
+      {
+        $unwind: {
+          path: '$srId_populated',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $project: {
+          _id: 1,
+          joNumber: 1,
+          type: 1,
+          dateIssued: 1,
+          requestedBy: 1,
+          department: 1,
+          contactPerson: 1,
+          priorityLevel: 1,
+          targetStartDate: 1,
+          targetCompletionDate: 1,
+          serviceCategory: 1,
+          workDescription: 1,
+          location: 1,
+          reason: 1,
+          materials: 1,
+          manpower: 1,
+          schedule: 1,
+          budget: 1,
+          acceptance: 1,
+          approvals: 1,
+          status: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          srId: {
+            $cond: {
+              if: { $ne: ['$srId_populated', null] },
+              then: '$srId_populated._id',
+              else: '$srId'
+            }
+          },
+          serviceRequest: {
+            $cond: {
+              if: { $ne: ['$srId_populated', null] },
+              then: {
+                _id: '$srId_populated._id',
+                srNumber: '$srId_populated.srNumber',
+                requestedBy: '$srId_populated.requestedBy',
+                department: '$srId_populated.department',
+                id: { $toString: '$srId_populated._id' }
+              },
+              else: null
+            }
+          }
+        }
+      }
+    ];
+    
+    const [jobOrders, totalCount] = await Promise.all([
+      JobOrder.aggregate(pipeline),
+      JobOrder.countDocuments(query)
+    ]);
+    
+    // Transform to ensure serviceRequest is properly set
+    const transformedJobOrders = jobOrders.map((jo: any) => {
+      if (jo.serviceRequest) {
+        return {
+          ...jo,
+          serviceRequest: {
+            ...jo.serviceRequest,
+            id: jo.serviceRequest.id || jo.serviceRequest._id?.toString(),
+          },
+          srId: jo.srId?.toString() || jo.srId,
+        };
+      }
+      return jo;
+    });
+    
+    return NextResponse.json({ 
+      jobOrders: transformedJobOrders,
+      totalCount,
+      hasMore: skip + limit < totalCount
+    });
   } catch (error) {
     console.error('Error fetching job orders:', error);
     return NextResponse.json(

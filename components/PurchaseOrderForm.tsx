@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { JobOrder, PurchaseOrderItem, MaterialItem, SupplierInfo } from '@/types';
+import { useToast } from './ToastContainer';
 
 interface PurchaseOrderFormProps {
   jobOrder: JobOrder;
@@ -13,8 +14,20 @@ interface PurchaseOrderFormProps {
 }
 
 export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: PurchaseOrderFormProps) {
+  const toast = useToast();
   const [items, setItems] = useState<PurchaseOrderItem[]>([]);
   const [tax, setTax] = useState(0);
+
+  // Format currency with commas
+  const formatCurrency = (value: number): string => {
+    return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  // Parse currency (remove commas)
+  const parseCurrency = (value: string): number => {
+    const cleaned = value.replace(/,/g, '').trim();
+    return cleaned === '' ? 0 : parseFloat(cleaned) || 0;
+  };
 
   // Initialize items from Job Order materials
   useEffect(() => {
@@ -98,7 +111,7 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
     // Validate that all items have supplier info
     const itemsWithoutSupplier = items.filter(item => !item.supplierInfo?.name && !item.supplier);
     if (itemsWithoutSupplier.length > 0) {
-      alert(`Please provide supplier information for each item. ${itemsWithoutSupplier.length} item(s) are missing supplier name.`);
+      toast.showWarning(`Please provide supplier information for each item. ${itemsWithoutSupplier.length} item(s) are missing supplier name.`);
       return;
     }
 
@@ -163,18 +176,20 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
                   className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
                 />
                 <input
-                  type="number"
+                  type="text"
                   placeholder="Unit Price"
-                  value={item.unitPrice || ''}
-                  onChange={(e) => updateItem(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                  value={item.unitPrice ? formatCurrency(item.unitPrice) : ''}
+                  onChange={(e) => {
+                    const numericValue = parseCurrency(e.target.value);
+                    updateItem(index, 'unitPrice', numericValue);
+                  }}
                   className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
-                  step="0.01"
                   required
                 />
                 <input
                   type="text"
                   placeholder="Total Price"
-                  value={item.totalPrice.toFixed(2)}
+                  value={formatCurrency(item.totalPrice)}
                   readOnly
                   className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm bg-gray-100"
                 />
@@ -235,7 +250,7 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
       <div className="bg-gray-50 rounded-md p-4">
         <div className="flex justify-between mb-2">
           <span className="font-medium text-gray-700">Subtotal:</span>
-          <span className="text-gray-900">₱{subtotal.toFixed(2)}</span>
+          <span className="text-gray-900">₱{formatCurrency(subtotal)}</span>
         </div>
         <div className="flex justify-between mb-2">
           <label className="font-medium text-gray-700">
@@ -248,11 +263,11 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
               className="ml-2 w-24 px-2 py-1 border border-gray-300 rounded text-sm"
             />
           </label>
-          <span className="text-gray-900">₱{tax.toFixed(2)}</span>
+          <span className="text-gray-900">₱{formatCurrency(tax)}</span>
         </div>
         <div className="flex justify-between pt-2 border-t border-gray-300">
           <span className="font-bold text-gray-900">Total Amount:</span>
-          <span className="font-bold text-gray-900">₱{totalAmount.toFixed(2)}</span>
+          <span className="font-bold text-gray-900">₱{formatCurrency(totalAmount)}</span>
         </div>
       </div>
 

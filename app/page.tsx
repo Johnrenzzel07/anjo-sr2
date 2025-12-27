@@ -7,9 +7,12 @@ import ServiceRequestCard from '@/components/ServiceRequestCard';
 import JobOrderCard from '@/components/JobOrderCard';
 import JobOrderForm from '@/components/JobOrderForm';
 import Link from 'next/link';
+import { useToast } from '@/components/ToastContainer';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function Home() {
   const router = useRouter();
+  const toast = useToast();
   const [user, setUser] = useState<any>(null);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
@@ -125,23 +128,23 @@ export default function Home() {
         setActiveTab('jo');
         
         // Show success message
-        alert(`Job Order ${result.jobOrder.joNumber} created successfully!`);
+        toast.showSuccess(`Job Order ${result.jobOrder.joNumber} created successfully!`);
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to create Job Order');
+        toast.showError(error.error || 'Failed to create Job Order');
         // Refresh data even on error to ensure UI is up to date
         fetchData();
       }
     } catch (error) {
       console.error('Error creating Job Order:', error);
-      alert('Failed to create Job Order');
+      toast.showError('Failed to create Job Order');
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
       </div>
     );
   }

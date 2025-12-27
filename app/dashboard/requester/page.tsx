@@ -2,17 +2,20 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ServiceRequest } from '@/types';
+import { ServiceRequest, JobOrder, PurchaseOrder } from '@/types';
 import ServiceRequestCard from '@/components/ServiceRequestCard';
 import StatusBadge from '@/components/StatusBadge';
 import NotificationBell from '@/components/NotificationBell';
 import SettingsMenu from '@/components/SettingsMenu';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function RequesterDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
+  const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [loadingMore, setLoadingMore] = useState(false);
@@ -26,8 +29,41 @@ export default function RequesterDashboard() {
   useEffect(() => {
     if (user) {
       fetchServiceRequests(true);
+      fetchRelatedData();
     }
   }, [user]);
+
+  const fetchRelatedData = async () => {
+    try {
+      // Fetch Job Orders and Purchase Orders
+      const [joRes, poRes] = await Promise.all([
+        fetch('/api/job-orders'),
+        fetch('/api/purchase-orders'),
+      ]);
+
+      if (joRes.ok) {
+        const joData = await joRes.json();
+        const normalizedJOs = (joData.jobOrders || []).map((jo: any) => ({
+          ...jo,
+          id: jo._id?.toString() || jo.id,
+          srId: typeof jo.srId === 'object' ? jo.srId._id?.toString() || jo.srId.id : jo.srId,
+        }));
+        setJobOrders(normalizedJOs);
+      }
+
+      if (poRes.ok) {
+        const poData = await poRes.json();
+        const normalizedPOs = (poData.purchaseOrders || []).map((po: any) => ({
+          ...po,
+          id: po._id?.toString() || po.id,
+          srId: typeof po.srId === 'object' ? po.srId._id?.toString() || po.srId.id : po.srId,
+        }));
+        setPurchaseOrders(normalizedPOs);
+      }
+    } catch (error) {
+      console.error('Error fetching related data:', error);
+    }
+  };
 
   // Reset and reload when search query changes
   useEffect(() => {
@@ -93,6 +129,11 @@ export default function RequesterDashboard() {
         const fetchedCount = data.serviceRequests?.length || 0;
         setHasMore(data.hasMore && fetchedCount === 9);
         setSkip(currentSkip + fetchedCount);
+        
+        // Refresh related data when service requests are fetched
+        if (reset) {
+          fetchRelatedData();
+        }
       }
     } catch (error) {
       console.error('Error fetching service requests:', error);
@@ -185,7 +226,7 @@ export default function RequesterDashboard() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
       </div>
     );
   }
@@ -334,6 +375,78 @@ export default function RequesterDashboard() {
                       <p className="text-sm text-gray-600 line-clamp-2">{sr.briefSubject || sr.workDescription}</p>
                     </div>
 
+                    {/* Related Job Orders and Purchase Orders */}
+                    {(() => {
+                      const srId = sr.id || sr._id;
+                      const relatedJOs = jobOrders.filter(jo => jo.srId === srId);
+                      const relatedPOs = purchaseOrders.filter(po => po.srId === srId);
+                      
+                      if (relatedJOs.length === 0 && relatedPOs.length === 0) {
+                        return null;
+                      }
+
+                      return (
+                        <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+                          {relatedJOs.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-gray-700 mb-1">Related Job Orders:</p>
+                              <div className="space-y-1">
+                                {relatedJOs.map((jo) => (
+                                  <div
+                                    key={jo.id || jo._id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      router.push(`/job-orders/${jo.id || jo._id}`);
+                                    }}
+                                    className="flex items-center justify-between text-xs bg-blue-50 hover:bg-blue-100 rounded px-2 py-1 transition-colors cursor-pointer"
+                                  >
+                                    <span className="text-blue-700 font-medium">{jo.joNumber}</span>
+                                    <div className="flex items-center gap-2">
+                                      {jo.type && (
+                                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                          jo.type === 'SERVICE' 
+                                            ? 'bg-blue-100 text-blue-800' 
+                                            : 'bg-purple-100 text-purple-800'
+                                        }`}>
+                                          {jo.type === 'SERVICE' ? 'Service' : 'Material'}
+                                        </span>
+                                      )}
+                                      <StatusBadge status={jo.status} type="jo" />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {relatedPOs.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-gray-700 mb-1">Related Purchase Orders:</p>
+                              <div className="space-y-1">
+                                {relatedPOs.map((po) => (
+                                  <div
+                                    key={po.id || po._id}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      router.push(`/purchase-orders/${po.id || po._id}`);
+                                    }}
+                                    className="flex items-center justify-between text-xs bg-green-50 hover:bg-green-100 rounded px-2 py-1 transition-colors cursor-pointer"
+                                  >
+                                    <span className="text-green-700 font-medium">{po.poNumber}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-gray-600">₱{po.totalAmount?.toLocaleString() || '0'}</span>
+                                      <StatusBadge status={po.status} type="po" />
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+
                     <div className="text-xs text-gray-500 mt-4 pt-4 border-t">
                       Created: {new Date(sr.createdAt).toLocaleDateString()}
                     </div>
@@ -346,10 +459,7 @@ export default function RequesterDashboard() {
                   <div className="mt-6 text-center">
                     {loadingMore ? (
                       <div className="flex items-center justify-center gap-2 text-gray-500">
-                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
+                        <LoadingSpinner size="30" speed="1.4" color="#6b7280" />
                         <span>Loading more...</span>
                       </div>
                     ) : (

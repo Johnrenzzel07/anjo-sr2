@@ -62,12 +62,13 @@ export async function PATCH(
     }
 
     // Calculate estimated total cost from materials and outsource price if not provided
+    // Note: estimatedCost is already the total (quantity × unitPrice), so we just sum them up
     let calculatedCost = estimatedTotalCost;
     if (!calculatedCost) {
       // Calculate from materials
       if (jobOrder.materials && jobOrder.materials.length > 0) {
         calculatedCost = jobOrder.materials.reduce((sum: number, material: any) => {
-          return sum + ((material.estimatedCost || 0) * (material.quantity || 0));
+          return sum + (material.estimatedCost || 0);
         }, 0);
       }
       
@@ -115,6 +116,15 @@ export async function PATCH(
 
       if (financeApproved && presidentApproved) {
         jobOrder.status = 'APPROVED';
+        
+        // Notify Purchasing if this is a Material Requisition
+        if (jobOrder.type === 'MATERIAL_REQUISITION') {
+          const { notifyPurchasingBudgetApproved } = await import('@/lib/utils/notifications');
+          await notifyPurchasingBudgetApproved(
+            jobOrder._id.toString(),
+            jobOrder.joNumber
+          );
+        }
       }
     } else if (action === 'REJECT') {
       // Add budget rejection

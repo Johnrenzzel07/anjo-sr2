@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ServiceRequest } from '@/types';
 import StatusBadge from '@/components/StatusBadge';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function ServiceRequestDetailPage() {
   const params = useParams();
@@ -42,7 +43,7 @@ export default function ServiceRequestDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
       </div>
     );
   }

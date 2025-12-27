@@ -19,6 +19,58 @@ export default function JobOrderDetail({
   onStatusChange,
   onBudgetUpdate,
 }: JobOrderDetailProps) {
+  // Helper function to format dates safely
+  const formatDate = (dateString: string | undefined | null): string => {
+    if (!dateString || !dateString.trim()) return 'N/A';
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString();
+  };
+
+  // Get target dates from milestones if not set in Job Order
+  const getTargetStartDate = (): string => {
+    if (jobOrder.targetStartDate && jobOrder.targetStartDate.trim()) {
+      const date = new Date(jobOrder.targetStartDate);
+      if (!isNaN(date.getTime())) {
+        return formatDate(jobOrder.targetStartDate);
+      }
+    }
+    // Fallback to earliest milestone start date
+    if (jobOrder.schedule && jobOrder.schedule.length > 0) {
+      const startDates = jobOrder.schedule
+        .map(m => m.startDate)
+        .filter(date => date && date.trim())
+        .map(date => new Date(date!))
+        .filter(date => !isNaN(date.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+      if (startDates.length > 0) {
+        return startDates[0].toLocaleDateString();
+      }
+    }
+    return 'N/A';
+  };
+
+  const getTargetCompletionDate = (): string => {
+    if (jobOrder.targetCompletionDate && jobOrder.targetCompletionDate.trim()) {
+      const date = new Date(jobOrder.targetCompletionDate);
+      if (!isNaN(date.getTime())) {
+        return formatDate(jobOrder.targetCompletionDate);
+      }
+    }
+    // Fallback to latest milestone end date
+    if (jobOrder.schedule && jobOrder.schedule.length > 0) {
+      const endDates = jobOrder.schedule
+        .map(m => m.endDate)
+        .filter(date => date && date.trim())
+        .map(date => new Date(date!))
+        .filter(date => !isNaN(date.getTime()))
+        .sort((a, b) => b.getTime() - a.getTime());
+      if (endDates.length > 0) {
+        return endDates[0].toLocaleDateString();
+      }
+    }
+    return 'N/A';
+  };
+
   const canApprove = (action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED') => {
     if (!currentUser) return false;
     
@@ -177,11 +229,11 @@ export default function JobOrderDetail({
           </div>
           <div>
             <span className="font-medium text-gray-700">Target Start Date:</span>{' '}
-            <span className="text-gray-600">{new Date(jobOrder.targetStartDate).toLocaleDateString()}</span>
+            <span className="text-gray-600">{getTargetStartDate()}</span>
           </div>
           <div>
             <span className="font-medium text-gray-700">Target Completion Date:</span>{' '}
-            <span className="text-gray-600">{new Date(jobOrder.targetCompletionDate).toLocaleDateString()}</span>
+            <span className="text-gray-600">{getTargetCompletionDate()}</span>
           </div>
         </div>
       </div>

@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { JobOrder, UserRole } from '@/types';
+import { useToast } from './ToastContainer';
+import { useConfirm } from './useConfirm';
 
 interface ExecutionPanelProps {
   jobOrder: JobOrder;
@@ -12,11 +14,17 @@ interface ExecutionPanelProps {
 }
 
 export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder, hasCompletedTransfer, onExecutionUpdate }: ExecutionPanelProps) {
+  const toast = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(false);
   const [workCompletionNotes, setWorkCompletionNotes] = useState(jobOrder.acceptance?.workCompletionNotes || '');
 
-  const userRole = currentUser?.role;
-  const canManageExecutionRole = userRole === 'OPERATIONS' || userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  const userRole = currentUser?.role as string;
+  const userDepartment = (currentUser as any)?.department;
+  const canManageExecutionRole = userRole === 'OPERATIONS' || 
+                                 userRole === 'ADMIN' || 
+                                 userRole === 'SUPER_ADMIN' ||
+                                 (userRole === 'APPROVER' && userDepartment === 'Operations');
 
   const isMaterialReq = jobOrder.type === 'MATERIAL_REQUISITION';
 
@@ -32,7 +40,11 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
     canManageExecutionRole;
 
   const handleStartExecution = async () => {
-    if (!confirm('Start execution for this Job Order? This will set the status to IN_PROGRESS.')) {
+    const proceed = await confirm('Start execution for this Job Order? This will set the status to IN_PROGRESS.', {
+      title: 'Start Execution',
+      confirmButtonColor: 'green',
+    });
+    if (!proceed) {
       return;
     }
 
@@ -47,15 +59,15 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
       });
 
       if (response.ok) {
-        alert('Execution started successfully!');
+        toast.showSuccess('Execution started successfully!');
         onExecutionUpdate?.();
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to start execution');
+        toast.showError(error.error || 'Failed to start execution');
       }
     } catch (error) {
       console.error('Error starting execution:', error);
-      alert('Failed to start execution');
+      toast.showError('Failed to start execution');
     } finally {
       setLoading(false);
     }
@@ -63,11 +75,15 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
   const handleCompleteExecution = async () => {
     if (!workCompletionNotes.trim()) {
-      alert('Please provide work completion notes before completing execution.');
+      toast.showWarning('Please provide work completion notes before completing execution.');
       return;
     }
 
-    if (!confirm('Complete execution for this Job Order? This will set the status to COMPLETED.')) {
+    const proceed = await confirm('Complete execution for this Job Order? This will set the status to COMPLETED.', {
+      title: 'Complete Execution',
+      confirmButtonColor: 'green',
+    });
+    if (!proceed) {
       return;
     }
 
@@ -83,15 +99,15 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
       });
 
       if (response.ok) {
-        alert('Execution completed successfully!');
+        toast.showSuccess('Execution completed successfully!');
         onExecutionUpdate?.();
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to complete execution');
+        toast.showError(error.error || 'Failed to complete execution');
       }
     } catch (error) {
       console.error('Error completing execution:', error);
-      alert('Failed to complete execution');
+      toast.showError('Failed to complete execution');
     } finally {
       setLoading(false);
     }
@@ -241,6 +257,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
           </p>
         )}
       </div>
+      <ConfirmDialog />
     </div>
   );
 }

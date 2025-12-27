@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { ServiceRequest, MaterialItem, ScheduleMilestone, ManpowerAssignment, JobOrderType } from '@/types';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface JobOrderFormProps {
   serviceRequest: ServiceRequest;
@@ -11,7 +12,7 @@ interface JobOrderFormProps {
     materials: MaterialItem[];
     manpower: Partial<ManpowerAssignment>;
     schedule: ScheduleMilestone[];
-  }) => void;
+  }) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -27,6 +28,7 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
     outsourcePrice: undefined,
   });
   const [schedule, setSchedule] = useState<ScheduleMilestone[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const addMaterial = () => {
     setMaterials([...materials, {
@@ -40,9 +42,46 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
     }]);
   };
 
-  const updateMaterial = (index: number, field: keyof MaterialItem, value: any) => {
+  const formatCurrency = (value: number | string): string => {
+    if (value === '' || value === null || value === undefined) return '';
+    const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+    if (isNaN(num)) return '';
+    return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  };
+
+  const parseCurrency = (value: string): number => {
+    // Remove commas and parse
+    const cleaned = value.replace(/,/g, '').trim();
+    return cleaned === '' ? 0 : parseFloat(cleaned) || 0;
+  };
+
+  const updateMaterial = (index: number, field: keyof MaterialItem | 'unitPrice', value: any) => {
     const updated = [...materials];
-    updated[index] = { ...updated[index], [field]: value };
+    const material = updated[index];
+    
+    if (field === 'unitPrice') {
+      // When unit price changes, calculate estimatedCost = quantity × unitPrice
+      const unitPrice = typeof value === 'number' ? value : parseCurrency(String(value));
+      const quantity = material.quantity || 0;
+      (updated[index] as any).unitPrice = unitPrice;
+      updated[index].estimatedCost = quantity * unitPrice;
+    } else if (field === 'quantity') {
+      // When quantity changes, calculate estimatedCost = quantity × unitPrice
+      const quantity = typeof value === 'number' ? value : (parseInt(String(value)) || 0);
+      updated[index].quantity = quantity;
+      const unitPrice = (material as any).unitPrice || 0;
+      updated[index].estimatedCost = quantity * unitPrice;
+    } else if (field === 'estimatedCost') {
+      // Allow manual entry of estimatedCost, parse and store numeric value
+      const cost = typeof value === 'number' ? value : parseCurrency(String(value));
+      updated[index].estimatedCost = cost;
+      // Recalculate unitPrice if quantity exists
+      const quantity = material.quantity || 1;
+      (updated[index] as any).unitPrice = quantity > 0 ? cost / quantity : 0;
+    } else {
+      updated[index] = { ...material, [field]: value };
+    }
+    
     setMaterials(updated);
   };
 
@@ -69,15 +108,25 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
     setSchedule(schedule.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
-      type,
-      workDescription: workDescription !== serviceRequest.workDescription ? workDescription : undefined,
-      materials,
-      manpower,
-      schedule,
-    });
+    if (isSubmitting) return; // Prevent multiple submissions
+    
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        type,
+        workDescription: workDescription !== serviceRequest.workDescription ? workDescription : undefined,
+        materials,
+        manpower,
+        schedule,
+      });
+    } catch (error) {
+      console.error('Error submitting form:', error);
+      // Error handling is done in the parent component
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -160,13 +209,16 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
                   placeholder="Description"
                   value={material.description}
                   onChange={(e) => updateMaterial(index, 'description', e.target.value)}
-                  className="col-span-3 px-2 py-1 border border-gray-300 rounded text-sm"
+                  className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
                 />
                 <input
                   type="number"
                   placeholder="Qty"
                   value={material.quantity || ''}
-                  onChange={(e) => updateMaterial(index, 'quantity', parseInt(e.target.value) || 0)}
+                  onChange={(e) => {
+                    const qty = parseInt(e.target.value) || 0;
+                    updateMaterial(index, 'quantity', qty);
+                  }}
                   className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
                 />
                 <input
@@ -177,10 +229,27 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
                   className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
                 />
                 <input
-                  type="number"
+                  type="text"
+                  placeholder="Unit Price"
+                  value={(material as any).unitPrice ? formatCurrency((material as any).unitPrice) : ''}
+                  onChange={(e) => {
+                    // Allow typing with commas, parse and store numeric value
+                    const input = e.target.value.replace(/[^0-9,]/g, '');
+                    const numericValue = parseCurrency(input);
+                    updateMaterial(index, 'unitPrice', numericValue);
+                  }}
+                  className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                />
+                <input
+                  type="text"
                   placeholder="Est. Cost"
-                  value={material.estimatedCost || ''}
-                  onChange={(e) => updateMaterial(index, 'estimatedCost', parseFloat(e.target.value) || 0)}
+                  value={material.estimatedCost ? formatCurrency(material.estimatedCost) : ''}
+                  onChange={(e) => {
+                    // Allow typing with commas, parse and store numeric value
+                    const input = e.target.value.replace(/[^0-9,]/g, '');
+                    const numericValue = parseCurrency(input);
+                    updateMaterial(index, 'estimatedCost', numericValue);
+                  }}
                   className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
                 />
                 <select
@@ -321,15 +390,24 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
         <button
           type="button"
           onClick={onCancel}
-          className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 text-sm sm:text-base"
+          disabled={isSubmitting}
+          className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm sm:text-base"
+          disabled={isSubmitting}
+          className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm sm:text-base flex items-center justify-center gap-2"
         >
-          Create Job Order
+          {isSubmitting ? (
+            <>
+              <LoadingSpinner size="20" speed="1.4" color="white" />
+              <span>Creating...</span>
+            </>
+          ) : (
+            'Create Job Order'
+          )}
         </button>
       </div>
     </form>

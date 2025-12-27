@@ -10,10 +10,15 @@ import AcceptancePanel from '@/components/AcceptancePanel';
 import TransferPanel from '@/components/TransferPanel';
 import StatusBadge from '@/components/StatusBadge';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/LoadingSpinner';
+import { useToast } from '@/components/ToastContainer';
+import { useConfirm } from '@/components/useConfirm';
 
 export default function JobOrderPage() {
   const params = useParams();
   const router = useRouter();
+  const toast = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [jobOrder, setJobOrder] = useState<JobOrder | null>(null);
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null);
   const [showCreatePO, setShowCreatePO] = useState(false);
@@ -99,11 +104,11 @@ export default function JobOrderPage() {
         setJobOrder(data.jobOrder);
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to add approval');
+        toast.showError(error.error || 'Failed to add approval');
       }
     } catch (error) {
       console.error('Error adding approval:', error);
-      alert('Failed to add approval');
+      toast.showError('Failed to add approval');
     }
   };
 
@@ -123,11 +128,11 @@ export default function JobOrderPage() {
         setJobOrder(data.jobOrder);
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to update status');
+        toast.showError(error.error || 'Failed to update status');
       }
     } catch (error) {
       console.error('Error updating status:', error);
-      alert('Failed to update status');
+      toast.showError('Failed to update status');
     }
   };
 
@@ -156,26 +161,26 @@ export default function JobOrderPage() {
         const result = await response.json();
         setPurchaseOrder(result.purchaseOrder);
         setShowCreatePO(false);
-        alert(`Purchase Order ${result.purchaseOrder.poNumber} created successfully!`);
+        toast.showSuccess(`Purchase Order ${result.purchaseOrder.poNumber} created successfully!`);
         router.push(`/purchase-orders/${result.purchaseOrder._id || result.purchaseOrder.id}`);
       } else {
         const error = await response.json();
         const errorMessage = error.details 
           ? `${error.error}\n\n${error.details}` 
           : error.error || 'Failed to create Purchase Order';
-        alert(errorMessage);
+        toast.showError(errorMessage);
         console.error('PO Creation Error:', error);
       }
     } catch (error) {
       console.error('Error creating Purchase Order:', error);
-      alert('Failed to create Purchase Order');
+      toast.showError('Failed to create Purchase Order');
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
       </div>
     );
   }
@@ -229,6 +234,37 @@ export default function JobOrderPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Read-only notice for unauthorized users */}
+        {(() => {
+          const userRole = currentUser?.role as string;
+          const userDepartment = (currentUser as any)?.department;
+          const isAuthorized = userRole === 'OPERATIONS' || 
+                              userRole === 'ADMIN' || 
+                              userRole === 'SUPER_ADMIN' ||
+                              userRole === 'FINANCE' ||
+                              userRole === 'DEPARTMENT_HEAD' ||
+                              (userRole === 'APPROVER' && (userDepartment === 'Operations' || userDepartment === 'Finance'));
+          
+          if (!isAuthorized && currentUser) {
+            return (
+              <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <svg className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-blue-900">View Only Mode</p>
+                    <p className="text-xs text-blue-700 mt-1">
+                      You are viewing this Job Order in read-only mode. Only authorized personnel (Operations, Finance, Admin, or Department Heads) can make changes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
+        
         {/* Show PO link or Create PO button for Material Requisition */}
         {(() => {
           const isMaterialRequisition = jobOrder.type === 'MATERIAL_REQUISITION';
@@ -250,6 +286,18 @@ export default function JobOrderPage() {
             return null;
           }
           
+          // Check if user is authorized to create Purchase Orders
+          const userRole = currentUser?.role as string;
+          const userDepartment = (currentUser as any)?.department;
+          const canCreatePO = userRole === 'ADMIN' || 
+                              userRole === 'SUPER_ADMIN' ||
+                              (userRole === 'APPROVER' && userDepartment === 'Purchasing');
+          
+          // Only show the card if user is authorized
+          if (!canCreatePO) {
+            return null;
+          }
+
           return (
             <div className="mb-6 bg-white rounded-lg shadow-md p-4 border-l-4 border-blue-500">
               {purchaseOrder ? (
@@ -278,7 +326,7 @@ export default function JobOrderPage() {
                   <button
                     onClick={() => {
                       if (!isMaterialRequisition && jobOrder.type) {
-                        alert('Purchase Orders can only be created from Material Requisition Job Orders. Please create a new Job Order with type "Material Requisition".');
+                        toast.showWarning('Purchase Orders can only be created from Material Requisition Job Orders. Please create a new Job Order with type "Material Requisition".');
                         return;
                       }
                       setShowCreatePO(true);
@@ -340,7 +388,7 @@ export default function JobOrderPage() {
 
         {/* Create PO Modal */}
         {showCreatePO && jobOrder && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">
@@ -362,6 +410,7 @@ export default function JobOrderPage() {
           </div>
         )}
       </main>
+      <ConfirmDialog />
     </div>
   );
 }

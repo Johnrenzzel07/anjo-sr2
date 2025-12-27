@@ -314,6 +314,31 @@ export async function notifyJobOrderNeedsApproval(
 }
 
 /**
+ * Notify Purchasing when Material Requisition Job Order budget is approved
+ */
+export async function notifyPurchasingBudgetApproved(
+  jobOrderId: string,
+  joNumber: string
+) {
+  try {
+    const purchasingIds = await findUsersByRole('APPROVER', 'Purchasing');
+    
+    if (purchasingIds.length > 0) {
+      await createNotificationsForUsers(purchasingIds, {
+        type: 'JOB_ORDER_NEEDS_APPROVAL',
+        title: `Material Requisition Ready for Purchase: ${joNumber}`,
+        message: `Material Requisition ${joNumber} budget has been approved. You can now create a Purchase Order.`,
+        link: `/job-orders/${jobOrderId}`,
+        relatedEntityType: 'JOB_ORDER',
+        relatedEntityId: jobOrderId,
+      });
+    }
+  } catch (error) {
+    console.error('Error notifying purchasing budget approved:', error);
+  }
+}
+
+/**
  * Notify requester when Job Order status changes
  */
 export async function notifyJobOrderStatusChanged(

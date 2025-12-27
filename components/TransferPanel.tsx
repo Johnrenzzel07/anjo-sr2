@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { JobOrder, PurchaseOrder, MaterialTransferItem, UserRole } from '@/types';
+import { useToast } from './ToastContainer';
+import { useConfirm } from './useConfirm';
 
 interface TransferPanelProps {
   jobOrder: JobOrder;
@@ -11,6 +13,8 @@ interface TransferPanelProps {
 }
 
 export default function TransferPanel({ jobOrder, purchaseOrder, currentUser, onTransferUpdate }: TransferPanelProps) {
+  const toast = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(false);
   const [transferItems, setTransferItems] = useState<MaterialTransferItem[]>([]);
   const [transferNotes, setTransferNotes] = useState('');
@@ -48,9 +52,11 @@ export default function TransferPanel({ jobOrder, purchaseOrder, currentUser, on
 
   // Check if user can manage transfers (OPERATIONS or ADMIN)
   const userRole = currentUser?.role as string;
+  const userDepartment = (currentUser as any)?.department;
   const canManageTransfer = userRole === 'OPERATIONS' || 
                             userRole === 'ADMIN' || 
-                            userRole === 'SUPER_ADMIN';
+                            userRole === 'SUPER_ADMIN' ||
+                            (userRole === 'APPROVER' && userDepartment === 'Operations');
 
   const updateTransferItem = (index: number, field: keyof MaterialTransferItem, value: any) => {
     const updated = [...transferItems];
@@ -74,12 +80,12 @@ export default function TransferPanel({ jobOrder, purchaseOrder, currentUser, on
 
   const handleSaveTransfer = async () => {
     if (!canManageTransfer) {
-      alert('You do not have permission to manage material transfers');
+      toast.showError('You do not have permission to manage material transfers');
       return;
     }
 
     if (!transferItems || transferItems.length === 0) {
-      alert('No items to transfer');
+      toast.showWarning('No items to transfer');
       return;
     }
 
@@ -95,17 +101,17 @@ export default function TransferPanel({ jobOrder, purchaseOrder, currentUser, on
       });
 
       if (response.ok) {
-        alert('Material transfer updated successfully!');
+        toast.showSuccess('Material transfer updated successfully!');
         if (onTransferUpdate) {
           onTransferUpdate();
         }
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to update material transfer');
+        toast.showError(error.error || 'Failed to update material transfer');
       }
     } catch (error) {
       console.error('Error updating transfer:', error);
-      alert('Failed to update material transfer');
+      toast.showError('Failed to update material transfer');
     } finally {
       setLoading(false);
     }
@@ -113,7 +119,7 @@ export default function TransferPanel({ jobOrder, purchaseOrder, currentUser, on
 
   const handleCompleteTransfer = async () => {
     if (!canManageTransfer) {
-      alert('You do not have permission to complete material transfers');
+      toast.showError('You do not have permission to complete material transfers');
       return;
     }
 
@@ -123,12 +129,20 @@ export default function TransferPanel({ jobOrder, purchaseOrder, currentUser, on
     );
 
     if (!allTransferred) {
-      if (!confirm('Some items have not been transferred. Are you sure you want to mark the transfer as completed?')) {
+      const proceed = await confirm('Some items have not been transferred. Are you sure you want to mark the transfer as completed?', {
+        title: 'Confirm Transfer',
+        confirmButtonColor: 'red',
+      });
+      if (!proceed) {
         return;
       }
     }
 
-    if (!confirm('Mark this material transfer as completed? This will finalize the transfer process.')) {
+    const proceed = await confirm('Mark this material transfer as completed? This will finalize the transfer process.', {
+      title: 'Complete Transfer',
+      confirmButtonColor: 'green',
+    });
+    if (!proceed) {
       return;
     }
 
@@ -146,18 +160,18 @@ export default function TransferPanel({ jobOrder, purchaseOrder, currentUser, on
       });
 
       if (response.ok) {
-        alert('Material transfer completed successfully!');
+        toast.showSuccess('Material transfer completed successfully!');
         setTransferCompleted(true);
         if (onTransferUpdate) {
           onTransferUpdate();
         }
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to complete material transfer');
+        toast.showError(error.error || 'Failed to complete material transfer');
       }
     } catch (error) {
       console.error('Error completing transfer:', error);
-      alert('Failed to complete material transfer');
+      toast.showError('Failed to complete material transfer');
     } finally {
       setLoading(false);
     }
@@ -338,6 +352,7 @@ export default function TransferPanel({ jobOrder, purchaseOrder, currentUser, on
           </p>
         </div>
       )}
+      <ConfirmDialog />
     </div>
   );
 }

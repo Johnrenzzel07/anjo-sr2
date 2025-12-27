@@ -5,13 +5,25 @@ import { useRouter, useParams } from 'next/navigation';
 import { PurchaseOrder, UserRole } from '@/types';
 import StatusBadge from '@/components/StatusBadge';
 import Link from 'next/link';
+import { useToast } from '@/components/ToastContainer';
+import { useConfirm } from '@/components/useConfirm';
+import { useApprovalModal } from '@/components/useApprovalModal';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function PurchaseOrderDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const toast = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
+  const { showApproval, ApprovalDialog } = useApprovalModal();
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ role: UserRole; id: string; name: string; department?: string } | null>(null);
+
+  // Format currency with commas
+  const formatCurrency = (value: number): string => {
+    return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   useEffect(() => {
     // Fetch current user
@@ -53,12 +65,12 @@ export default function PurchaseOrderDetailPage() {
           id: data.purchaseOrder._id?.toString() || data.purchaseOrder.id,
         });
       } else {
-        alert('Failed to fetch purchase order');
+        toast.showError('Failed to fetch purchase order');
         router.push('/dashboard/admin');
       }
     } catch (error) {
       console.error('Error fetching purchase order:', error);
-      alert('Failed to fetch purchase order');
+      toast.showError('Failed to fetch purchase order');
     } finally {
       setLoading(false);
     }
@@ -67,7 +79,7 @@ export default function PurchaseOrderDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
       </div>
     );
   }
@@ -225,11 +237,11 @@ export default function PurchaseOrderDetailPage() {
                                   if (response.ok) {
                                     fetchPurchaseOrder(); // Refresh
                                   } else {
-                                    alert('Failed to update delivery date');
+                                    toast.showError('Failed to update delivery date');
                                   }
                                 } catch (error) {
                                   console.error('Error updating delivery date:', error);
-                                  alert('Failed to update delivery date');
+                                  toast.showError('Failed to update delivery date');
                                 }
                               }}
                               className="px-2 py-1 border border-gray-300 rounded text-sm"
@@ -273,8 +285,8 @@ export default function PurchaseOrderDetailPage() {
                         <td className="px-4 py-3 text-sm text-gray-900">{item.description}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.quantity}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.unit}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">₱{item.unitPrice.toFixed(2)}</td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">₱{item.totalPrice.toFixed(2)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">₱{formatCurrency(item.unitPrice)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">₱{formatCurrency(item.totalPrice)}</td>
                       </tr>
                     ))
                   ) : (
@@ -291,7 +303,7 @@ export default function PurchaseOrderDetailPage() {
                       Subtotal:
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-gray-900">
-                      ₱{purchaseOrder.subtotal?.toFixed(2) || '0.00'}
+                      ₱{formatCurrency(purchaseOrder.subtotal || 0)}
                     </td>
                   </tr>
                   {purchaseOrder.tax && purchaseOrder.tax > 0 ? (
@@ -300,7 +312,7 @@ export default function PurchaseOrderDetailPage() {
                         Tax:
                       </td>
                       <td className="px-4 py-3 text-sm font-bold text-gray-900">
-                        ₱{purchaseOrder.tax.toFixed(2)}
+                        ₱{formatCurrency(purchaseOrder.tax)}
                       </td>
                     </tr>
                   ) : null}
@@ -309,7 +321,7 @@ export default function PurchaseOrderDetailPage() {
                       Total Amount:
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-gray-900">
-                      ₱{purchaseOrder.totalAmount?.toFixed(2) || '0.00'}
+                      ₱{formatCurrency(purchaseOrder.totalAmount || 0)}
                     </td>
                   </tr>
                 </tfoot>
@@ -360,7 +372,11 @@ export default function PurchaseOrderDetailPage() {
               <div className="mb-4">
                 <button
                   onClick={async () => {
-                    if (!confirm('Submit this Purchase Order for approval?')) return;
+                    const proceed = await confirm('Submit this Purchase Order for approval?', {
+                      title: 'Submit Purchase Order',
+                      confirmButtonColor: 'blue',
+                    });
+                    if (!proceed) return;
                     try {
                       const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
                         method: 'PATCH',
@@ -368,15 +384,15 @@ export default function PurchaseOrderDetailPage() {
                         body: JSON.stringify({ status: 'SUBMITTED' }),
                       });
                       if (response.ok) {
-                        alert('Purchase Order submitted successfully!');
+                        toast.showSuccess('Purchase Order submitted successfully!');
                         fetchPurchaseOrder();
                       } else {
                         const error = await response.json();
-                        alert(error.error || 'Failed to submit Purchase Order');
+                        toast.showError(error.error || 'Failed to submit Purchase Order');
                       }
                     } catch (error) {
                       console.error('Error submitting PO:', error);
-                      alert('Failed to submit Purchase Order');
+                      toast.showError('Failed to submit Purchase Order');
                     }
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
@@ -418,8 +434,14 @@ export default function PurchaseOrderDetailPage() {
                         {!financeApproved && (currentUser.role === 'FINANCE' || currentUser.department === 'Finance') && !userHasApproved && (
                           <button
                             onClick={async () => {
-                              const comments = prompt('Enter approval comments:');
-                              if (!comments) return;
+                              const comments = await showApproval({
+                                title: 'Finance Approval',
+                                message: 'Please enter your approval comments for this Purchase Order.',
+                                confirmButtonText: 'Approve',
+                                confirmButtonColor: 'green',
+                                placeholder: 'Enter approval comments (optional)...',
+                              });
+                              if (comments === null) return; // User cancelled
                               try {
                                 const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}/approve`, {
                                   method: 'POST',
@@ -429,19 +451,19 @@ export default function PurchaseOrderDetailPage() {
                                     userId: currentUser.id,
                                     userName: currentUser.name,
                                     action: 'APPROVED',
-                                    comments,
+                                    comments: comments || '',
                                   }),
                                 });
                                 if (response.ok) {
-                                  alert('Purchase Order approved by Finance!');
+                                  toast.showSuccess('Purchase Order approved by Finance!');
                                   fetchPurchaseOrder();
                                 } else {
                                   const error = await response.json();
-                                  alert(error.error || 'Failed to approve');
+                                  toast.showError(error.error || 'Failed to approve');
                                 }
                               } catch (error) {
                                 console.error('Error approving:', error);
-                                alert('Failed to approve Purchase Order');
+                                toast.showError('Failed to approve Purchase Order');
                               }
                             }}
                             className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
@@ -466,8 +488,14 @@ export default function PurchaseOrderDetailPage() {
                         {financeApproved && !presidentApproved && (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN') && !userHasApproved && (
                           <button
                             onClick={async () => {
-                              const comments = prompt('Enter approval comments:');
-                              if (!comments) return;
+                              const comments = await showApproval({
+                                title: 'President Approval',
+                                message: 'Please enter your approval comments for this Purchase Order.',
+                                confirmButtonText: 'Approve',
+                                confirmButtonColor: 'green',
+                                placeholder: 'Enter approval comments (optional)...',
+                              });
+                              if (comments === null) return; // User cancelled
                               try {
                                 const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}/approve`, {
                                   method: 'POST',
@@ -477,19 +505,19 @@ export default function PurchaseOrderDetailPage() {
                                     userId: currentUser.id,
                                     userName: currentUser.name,
                                     action: 'APPROVED',
-                                    comments,
+                                    comments: comments || '',
                                   }),
                                 });
                                 if (response.ok) {
-                                  alert('Purchase Order approved by President!');
+                                  toast.showSuccess('Purchase Order approved by President!');
                                   fetchPurchaseOrder();
                                 } else {
                                   const error = await response.json();
-                                  alert(error.error || 'Failed to approve');
+                                  toast.showError(error.error || 'Failed to approve');
                                 }
                               } catch (error) {
                                 console.error('Error approving:', error);
-                                alert('Failed to approve Purchase Order');
+                                toast.showError('Failed to approve Purchase Order');
                               }
                             }}
                             className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
@@ -520,7 +548,11 @@ export default function PurchaseOrderDetailPage() {
                       </p>
                       <button
                         onClick={async () => {
-                          if (!confirm('Mark this Purchase Order as PURCHASED? This indicates the order has been placed with the supplier.')) return;
+                          const proceed = await confirm('Mark this Purchase Order as PURCHASED? This indicates the order has been placed with the supplier.', {
+                            title: 'Mark as Purchased',
+                            confirmButtonColor: 'blue',
+                          });
+                          if (!proceed) return;
                           try {
                             const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
                               method: 'PATCH',
@@ -528,15 +560,15 @@ export default function PurchaseOrderDetailPage() {
                               body: JSON.stringify({ status: 'PURCHASED' }),
                             });
                             if (response.ok) {
-                              alert('Purchase Order marked as PURCHASED!');
+                              toast.showSuccess('Purchase Order marked as PURCHASED!');
                               fetchPurchaseOrder();
                             } else {
                               const error = await response.json();
-                              alert(error.error || 'Failed to update status');
+                              toast.showError(error.error || 'Failed to update status');
                             }
                           } catch (error) {
                             console.error('Error updating PO status:', error);
-                            alert('Failed to update Purchase Order status');
+                            toast.showError('Failed to update Purchase Order status');
                           }
                         }}
                         className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
@@ -575,7 +607,11 @@ export default function PurchaseOrderDetailPage() {
                       </div>
                       <button
                         onClick={async () => {
-                          if (!confirm('Mark this Purchase Order as RECEIVED? This will automatically set the Job Order to IN_PROGRESS.')) return;
+                          const proceed = await confirm('Mark this Purchase Order as RECEIVED? This will automatically set the Job Order to IN_PROGRESS.', {
+                            title: 'Mark as Received',
+                            confirmButtonColor: 'green',
+                          });
+                          if (!proceed) return;
                           try {
                             const actualDeliveryDate = (document.getElementById('actualDeliveryDate') as HTMLInputElement)?.value;
                             const deliveryNotes = (document.getElementById('deliveryNotes') as HTMLTextAreaElement)?.value;
@@ -590,15 +626,15 @@ export default function PurchaseOrderDetailPage() {
                               }),
                             });
                             if (response.ok) {
-                              alert('Purchase Order marked as RECEIVED! Job Order has been automatically set to IN_PROGRESS.');
+                              toast.showSuccess('Purchase Order marked as RECEIVED! Job Order has been automatically set to IN_PROGRESS.');
                               fetchPurchaseOrder();
                             } else {
                               const error = await response.json();
-                              alert(error.error || 'Failed to update status');
+                              toast.showError(error.error || 'Failed to update status');
                             }
                           } catch (error) {
                             console.error('Error updating PO status:', error);
-                            alert('Failed to update Purchase Order status');
+                            toast.showError('Failed to update Purchase Order status');
                           }
                         }}
                         className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
@@ -608,15 +644,61 @@ export default function PurchaseOrderDetailPage() {
                     </div>
                   )}
 
-                  {/* Status Display for Received/Closed */}
-                  {(purchaseOrder.status === 'RECEIVED' || purchaseOrder.status === 'CLOSED') && (
+                  {/* Mark as Closed */}
+                  {purchaseOrder.status === 'RECEIVED' && (
+                    <div className="p-3 bg-purple-50 rounded-md border border-purple-200">
+                      <p className="text-sm text-gray-700 mb-2">
+                        <strong>Step 3:</strong> Close this Purchase Order when all items have been processed and the order is complete.
+                      </p>
+                      <button
+                        onClick={async () => {
+                          const proceed = await confirm('Close this Purchase Order? This will mark the order as complete and final.', {
+                            title: 'Close Purchase Order',
+                            confirmButtonColor: 'purple',
+                          });
+                          if (!proceed) return;
+                          try {
+                            const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ 
+                                status: 'CLOSED',
+                                closedAt: new Date().toISOString(),
+                              }),
+                            });
+                            if (response.ok) {
+                              toast.showSuccess('Purchase Order closed successfully!');
+                              fetchPurchaseOrder();
+                            } else {
+                              const error = await response.json();
+                              toast.showError(error.error || 'Failed to close Purchase Order');
+                            }
+                          } catch (error) {
+                            console.error('Error closing PO:', error);
+                            toast.showError('Failed to close Purchase Order');
+                          }
+                        }}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
+                      >
+                        Close Purchase Order
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Status Display for Closed */}
+                  {purchaseOrder.status === 'CLOSED' && (
                     <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
                       <p className="text-sm text-gray-700">
-                        <strong>Status:</strong> {purchaseOrder.status === 'RECEIVED' ? 'Items have been received. Job Order is now IN_PROGRESS.' : 'Purchase Order is closed.'}
+                        <strong>Status:</strong> Purchase Order is closed.
                       </p>
                       {purchaseOrder.actualDeliveryDate && (
                         <p className="text-sm text-gray-600 mt-1">
                           <strong>Actual Delivery Date:</strong> {new Date(purchaseOrder.actualDeliveryDate).toLocaleDateString()}
+                        </p>
+                      )}
+                      {purchaseOrder.closedAt && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          <strong>Closed Date:</strong> {new Date(purchaseOrder.closedAt).toLocaleDateString()}
                         </p>
                       )}
                       {purchaseOrder.deliveryNotes && (
@@ -640,6 +722,8 @@ export default function PurchaseOrderDetailPage() {
           )}
         </div>
       </div>
+      <ConfirmDialog />
+      <ApprovalDialog />
     </div>
   );
 }

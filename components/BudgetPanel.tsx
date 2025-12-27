@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { JobOrder, UserRole } from '@/types';
+import { useToast } from './ToastContainer';
+import { useConfirm } from './useConfirm';
 
 interface BudgetPanelProps {
   jobOrder: JobOrder;
@@ -10,6 +12,8 @@ interface BudgetPanelProps {
 }
 
 export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: BudgetPanelProps) {
+  const toast = useToast();
+  const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(false);
   const [estimatedTotalCost, setEstimatedTotalCost] = useState(
     jobOrder.budget?.estimatedTotalCost || 0
@@ -27,9 +31,10 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
     let calculated = 0;
     
     // Calculate from materials
+    // Note: estimatedCost is already the total (quantity × unitPrice), so we just sum them up
     if (jobOrder.materials && jobOrder.materials.length > 0) {
       calculated = jobOrder.materials.reduce((sum, material) => {
-        return sum + ((material.estimatedCost || 0) * (material.quantity || 0));
+        return sum + (material.estimatedCost || 0);
       }, 0);
     }
     
@@ -77,15 +82,15 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
       });
 
       if (response.ok) {
-        alert('Budget information updated successfully!');
+        toast.showSuccess('Budget information updated successfully!');
         onBudgetUpdate?.();
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to update budget');
+        toast.showError(error.error || 'Failed to update budget');
       }
     } catch (error) {
       console.error('Error updating budget:', error);
-      alert('Failed to update budget');
+      toast.showError('Failed to update budget');
     } finally {
       setLoading(false);
     }
@@ -93,11 +98,15 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
 
   const handleApproveBudget = async () => {
     if (!comments.trim()) {
-      alert('Please provide comments for budget approval.');
+      toast.showWarning('Please provide comments for budget approval.');
       return;
     }
 
-    if (!confirm('Approve this budget? This will add your approval to the Job Order.')) {
+    const proceed = await confirm('Approve this budget? This will add your approval to the Job Order.', {
+      title: 'Approve Budget',
+      confirmButtonColor: 'green',
+    });
+    if (!proceed) {
       return;
     }
 
@@ -115,16 +124,16 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
       });
 
       if (response.ok) {
-        alert('Budget approved successfully!');
+        toast.showSuccess('Budget approved successfully!');
         setComments('');
         onBudgetUpdate?.();
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to approve budget');
+        toast.showError(error.error || 'Failed to approve budget');
       }
     } catch (error) {
       console.error('Error approving budget:', error);
-      alert('Failed to approve budget');
+      toast.showError('Failed to approve budget');
     } finally {
       setLoading(false);
     }
@@ -132,11 +141,15 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
 
   const handleRejectBudget = async () => {
     if (!comments.trim()) {
-      alert('Please provide comments for budget rejection.');
+      toast.showWarning('Please provide comments for budget rejection.');
       return;
     }
 
-    if (!confirm('Reject this budget? This will add your rejection to the Job Order.')) {
+    const proceed = await confirm('Reject this budget? This will add your rejection to the Job Order.', {
+      title: 'Reject Budget',
+      confirmButtonColor: 'red',
+    });
+    if (!proceed) {
       return;
     }
 
@@ -152,29 +165,30 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
       });
 
       if (response.ok) {
-        alert('Budget rejected.');
+        toast.showSuccess('Budget rejected.');
         setComments('');
         onBudgetUpdate?.();
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to reject budget');
+        toast.showError(error.error || 'Failed to reject budget');
       }
     } catch (error) {
       console.error('Error rejecting budget:', error);
-      alert('Failed to reject budget');
+      toast.showError('Failed to reject budget');
     } finally {
       setLoading(false);
     }
   };
 
   // Calculate from materials and outsource price if not set
+  // Note: estimatedCost is already the total (quantity × unitPrice), so we just sum them up
   const calculatedCost = (() => {
     let cost = 0;
     
     // Calculate from materials
     if (jobOrder.materials && jobOrder.materials.length > 0) {
       cost = jobOrder.materials.reduce((sum, material) => {
-        return sum + ((material.estimatedCost || 0) * (material.quantity || 0));
+        return sum + (material.estimatedCost || 0);
       }, 0);
     }
     
@@ -367,6 +381,7 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
           )}
         </div>
       </div>
+      <ConfirmDialog />
     </div>
   );
 }

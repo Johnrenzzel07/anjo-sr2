@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface Notification {
   _id?: string;
@@ -166,7 +167,9 @@ export default function NotificationsPage() {
 
         {/* Notifications List */}
         {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading notifications...</div>
+          <div className="text-center py-12">
+            <LoadingSpinner size="60" speed="1.4" color="#6b7280" />
+          </div>
         ) : notifications.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500 text-lg">No notifications found</p>

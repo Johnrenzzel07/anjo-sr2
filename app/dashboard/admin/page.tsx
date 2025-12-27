@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ServiceRequest, JobOrder, PurchaseOrder, JobOrderType } from '@/types';
 import ServiceRequestCard from '@/components/ServiceRequestCard';
@@ -11,9 +11,12 @@ import StatusBadge from '@/components/StatusBadge';
 import NotificationBell from '@/components/NotificationBell';
 import SettingsMenu from '@/components/SettingsMenu';
 import Link from 'next/link';
+import { useToast } from '@/components/ToastContainer';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 export default function AdminDashboard() {
   const router = useRouter();
+  const toast = useToast();
   
   // Helper to normalize department names (e.g., 'IT' vs 'IT Department')
   const normalizeDept = (dept: string | undefined) =>
@@ -26,22 +29,83 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'sr' | 'jo' | 'po' | 'approvals'>('sr');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterJOStatus, setFilterJOStatus] = useState<string>('all');
+  const [filterPOStatus, setFilterPOStatus] = useState<string>('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedSR, setSelectedSR] = useState<ServiceRequest | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [srSkip, setSrSkip] = useState(0);
   const [srLoadingMore, setSrLoadingMore] = useState(false);
   const [srHasMore, setSrHasMore] = useState(true);
+  const [joSkip, setJoSkip] = useState(0);
+  const [joLoadingMore, setJoLoadingMore] = useState(false);
+  const [joHasMore, setJoHasMore] = useState(true);
+  const [poSkip, setPoSkip] = useState(0);
+  const [poLoadingMore, setPoLoadingMore] = useState(false);
+  const [poHasMore, setPoHasMore] = useState(true);
+  const [srTotalCount, setSrTotalCount] = useState(0);
+  const [joTotalCount, setJoTotalCount] = useState(0);
+  const [poTotalCount, setPoTotalCount] = useState(0);
 
   useEffect(() => {
     fetchUser();
   }, []);
 
+  // Fetch counts for all tabs on initial load
+  const fetchAllCounts = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      // Fetch Service Requests count
+      const statusParam = filterStatus !== 'all' ? `&status=${filterStatus}` : '';
+      const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
+      const srRes = await fetch(`/api/service-requests?limit=1&skip=0${statusParam}${deptParam}`);
+      const srData = await srRes.json();
+      if (srData.totalCount !== undefined) {
+        setSrTotalCount(srData.totalCount);
+      }
+
+      // Fetch Job Orders count
+      const joStatusParam = filterJOStatus !== 'all' ? `&status=${filterJOStatus}` : '';
+      const joRes = await fetch(`/api/job-orders?limit=1&skip=0${joStatusParam}`);
+      const joData = await joRes.json();
+      if (joData.totalCount !== undefined) {
+        setJoTotalCount(joData.totalCount);
+      }
+
+      // Fetch Purchase Orders count (only if user has access)
+      if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || 
+          (user?.role === 'APPROVER' && (normalizeDept(user.department) === 'purchasing' || normalizeDept(user.department) === 'finance'))) {
+        const poStatusParam = filterPOStatus !== 'all' ? `&status=${filterPOStatus}` : '';
+        const poRes = await fetch(`/api/purchase-orders?limit=1&skip=0${poStatusParam}`);
+        const poData = await poRes.json();
+        if (poData.totalCount !== undefined) {
+          setPoTotalCount(poData.totalCount);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching counts:', error);
+    }
+  }, [user, filterStatus, filterJOStatus, filterPOStatus]);
+
+  // Fetch counts when user loads or filters change
+  useEffect(() => {
+    if (user) {
+      fetchAllCounts();
+    }
+  }, [user, filterStatus, filterJOStatus, filterPOStatus, fetchAllCounts]);
+
+  // Fetch data when user loads or filters change
   useEffect(() => {
     if (user) {
       fetchData(true);
+      if (activeTab === 'jo') {
+        fetchJOData(true);
+      } else if (activeTab === 'po') {
+        fetchPOData(true);
+      }
     }
-  }, [user, filterStatus]);
+  }, [user, filterStatus, filterJOStatus, filterPOStatus]);
 
   // Reset when search query changes
   useEffect(() => {
@@ -49,6 +113,23 @@ export default function AdminDashboard() {
       fetchData(true);
     }
   }, [searchQuery, activeTab]);
+
+  // Reset when tab changes
+  useEffect(() => {
+    if (user) {
+      if (activeTab === 'jo') {
+        setJoSkip(0);
+        setJobOrders([]);
+        setJoHasMore(true);
+        fetchJOData(true);
+      } else if (activeTab === 'po') {
+        setPoSkip(0);
+        setPurchaseOrders([]);
+        setPoHasMore(true);
+        fetchPOData(true);
+      }
+    }
+  }, [activeTab]);
 
   const loadMoreSRs = async () => {
     if (srLoadingMore || !srHasMore || activeTab !== 'sr' || searchQuery.trim()) return;
@@ -85,9 +166,9 @@ export default function AdminDashboard() {
     }
   };
 
-  // Handle scroll for infinite loading (only for SR tab without search)
+  // Handle scroll for infinite loading (all tabs without search)
   useEffect(() => {
-    if (activeTab !== 'sr' || !srHasMore || srLoadingMore || searchQuery.trim()) return;
+    if (searchQuery.trim()) return; // Don't load more when searching
 
     let timeoutId: NodeJS.Timeout;
     const handleScroll = () => {
@@ -100,7 +181,13 @@ export default function AdminDashboard() {
 
         // Load more when user is 200px from bottom
         if (scrollTop + windowHeight >= documentHeight - 200) {
-          loadMoreSRs();
+          if (activeTab === 'sr' && srHasMore && !srLoadingMore) {
+            loadMoreSRs();
+          } else if (activeTab === 'jo' && joHasMore && !joLoadingMore) {
+            loadMoreJOs();
+          } else if (activeTab === 'po' && poHasMore && !poLoadingMore) {
+            loadMorePOs();
+          }
         }
       }, 100);
     };
@@ -110,7 +197,7 @@ export default function AdminDashboard() {
       clearTimeout(timeoutId);
       window.removeEventListener('scroll', handleScroll);
     };
-  }, [srHasMore, srLoadingMore, activeTab, searchQuery, srSkip, filterStatus, user]);
+  }, [srHasMore, srLoadingMore, joHasMore, joLoadingMore, poHasMore, poLoadingMore, activeTab, searchQuery, srSkip, joSkip, poSkip, filterStatus, filterJOStatus, filterPOStatus, user]);
 
   const fetchUser = async () => {
     try {
@@ -142,15 +229,8 @@ export default function AdminDashboard() {
       // Include status and department filters in API call
       const statusParam = filterStatus !== 'all' ? `&status=${filterStatus}` : '';
       const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
-      const [srRes, joRes, poRes] = await Promise.all([
-        fetch(`/api/service-requests?limit=9&skip=${currentSrSkip}${statusParam}${deptParam}`),
-        fetch('/api/job-orders'),
-        fetch('/api/purchase-orders'),
-      ]);
-      
+      const srRes = await fetch(`/api/service-requests?limit=9&skip=${currentSrSkip}${statusParam}${deptParam}`);
       const srData = await srRes.json();
-      const joData = await joRes.json();
-      const poData = await poRes.json();
       
       // Normalize data (no need for client-side department filtering since it's done on server)
       const normalizedSRs = (srData.serviceRequests || []).map((sr: any) => ({
@@ -174,50 +254,155 @@ export default function AdminDashboard() {
       const fetchedCount = srData.serviceRequests?.length || 0;
       setSrHasMore(srData.hasMore && fetchedCount === 9);
       setSrSkip(currentSrSkip + fetchedCount);
+      // Update total count
+      if (srData.totalCount !== undefined) {
+        setSrTotalCount(srData.totalCount);
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchJOData = async (resetJO = false) => {
+    try {
+      if (resetJO) {
+        setJoSkip(0);
+        setJobOrders([]);
+        setJoHasMore(true);
+      }
+      
+      const currentJoSkip = resetJO ? 0 : joSkip;
+      const statusParam = filterJOStatus !== 'all' ? `&status=${filterJOStatus}` : '';
+      
+      const joRes = await fetch(`/api/job-orders?limit=9&skip=${currentJoSkip}${statusParam}`);
+      const joData = await joRes.json();
       
       // Filter Job Orders based on user role and department
       let jos = joData.jobOrders || [];
       if (user?.role === 'APPROVER' && user?.department) {
         const userDeptNorm = normalizeDept(user.department);
-        // Special case: Operations head (Ina) should see ALL Job Orders (they manage execution)
-        if (userDeptNorm !== 'operations') {
-          // Other department heads only see JOs from their own department
+        // Special cases: Operations, Finance, and Purchasing should see ALL Job Orders
+        if (userDeptNorm !== 'operations' && userDeptNorm !== 'finance' && userDeptNorm !== 'purchasing') {
           jos = jos.filter((jo: any) => normalizeDept(jo.department) === userDeptNorm);
         }
       }
+      
+      const normalizedJOs = jos.map((jo: any) => {
+        if (jo.serviceRequest) {
+          return {
+            ...jo,
+            id: jo._id?.toString() || jo.id,
+            srId: typeof jo.srId === 'object' ? jo.srId._id?.toString() || jo.srId.id : jo.srId,
+          };
+        }
+        return {
+          ...jo,
+          id: jo._id?.toString() || jo.id,
+          srId: typeof jo.srId === 'object' ? jo.srId._id?.toString() || jo.srId.id : jo.srId,
+          serviceRequest: typeof jo.srId === 'object' && jo.srId ? {
+            ...jo.srId,
+            id: jo.srId._id?.toString() || jo.srId.id,
+          } : jo.serviceRequest,
+        };
+      });
+      
+      if (resetJO) {
+        setJobOrders(normalizedJOs);
+      } else {
+        setJobOrders(prev => {
+          const existingIds = new Set(prev.map(jo => jo.id || jo._id?.toString()));
+          const newItems = normalizedJOs.filter((jo: JobOrder) => !existingIds.has(jo.id || jo._id?.toString()));
+          return [...prev, ...newItems];
+        });
+      }
+      
+      const fetchedCount = normalizedJOs.length;
+      setJoHasMore(joData.hasMore && fetchedCount === 9);
+      setJoSkip(currentJoSkip + fetchedCount);
+      // Update total count
+      if (joData.totalCount !== undefined) {
+        setJoTotalCount(joData.totalCount);
+      }
+    } catch (error) {
+      console.error('Error fetching job orders:', error);
+    }
+  };
 
-      const normalizedJOs = jos.map((jo: any) => ({
-        ...jo,
-        id: jo._id?.toString() || jo.id,
-        srId: typeof jo.srId === 'object' ? jo.srId._id?.toString() || jo.srId.id : jo.srId,
-        serviceRequest: typeof jo.srId === 'object' ? {
-          ...jo.srId,
-          id: jo.srId._id?.toString() || jo.srId.id,
-        } : jo.serviceRequest,
-      }));
-
-      // Filter Purchase Orders based on user role and department (for Approvers)
+  const fetchPOData = async (resetPO = false) => {
+    try {
+      if (resetPO) {
+        setPoSkip(0);
+        setPurchaseOrders([]);
+        setPoHasMore(true);
+      }
+      
+      const currentPoSkip = resetPO ? 0 : poSkip;
+      const statusParam = filterPOStatus !== 'all' ? `&status=${filterPOStatus}` : '';
+      
+      const poRes = await fetch(`/api/purchase-orders?limit=9&skip=${currentPoSkip}${statusParam}`);
+      const poData = await poRes.json();
+      
+      // Filter Purchase Orders - Purchasing, Finance, and President can see Purchase Orders
       let pos = poData.purchaseOrders || [];
       if (user?.role === 'APPROVER' && user?.department) {
         const userDeptNorm = normalizeDept(user.department);
-        pos = pos.filter((po: any) => normalizeDept(po.department) === userDeptNorm);
+        if (userDeptNorm !== 'purchasing' && userDeptNorm !== 'finance') {
+          pos = [];
+        }
       }
-
+      
       const normalizedPOs = pos.map((po: any) => ({
         ...po,
-        // Normalize only the top-level id; keep populated joId object so we can access joNumber
         id: po._id?.toString() || po.id,
-        joId: po.joId, // may be populated object with joNumber and type
+        joId: po.joId,
         srId: typeof po.srId === 'object' ? po.srId._id?.toString() || po.srId.id : po.srId,
       }));
-
-      setServiceRequests(normalizedSRs);
-      setJobOrders(normalizedJOs);
-      setPurchaseOrders(normalizedPOs);
+      
+      if (resetPO) {
+        setPurchaseOrders(normalizedPOs);
+      } else {
+        setPurchaseOrders(prev => {
+          const existingIds = new Set(prev.map(po => po.id || po._id?.toString()));
+          const newItems = normalizedPOs.filter((po: PurchaseOrder) => !existingIds.has(po.id || po._id?.toString()));
+          return [...prev, ...newItems];
+        });
+      }
+      
+      const fetchedCount = normalizedPOs.length;
+      setPoHasMore(poData.hasMore && fetchedCount === 9);
+      setPoSkip(currentPoSkip + fetchedCount);
+      // Update total count
+      if (poData.totalCount !== undefined) {
+        setPoTotalCount(poData.totalCount);
+      }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching purchase orders:', error);
+    }
+  };
+
+  const loadMoreJOs = async () => {
+    if (joLoadingMore || !joHasMore || activeTab !== 'jo' || searchQuery.trim()) return;
+    setJoLoadingMore(true);
+    try {
+      await fetchJOData(false);
+    } catch (error) {
+      console.error('Error loading more job orders:', error);
     } finally {
-      setLoading(false);
+      setJoLoadingMore(false);
+    }
+  };
+
+  const loadMorePOs = async () => {
+    if (poLoadingMore || !poHasMore || activeTab !== 'po' || searchQuery.trim()) return;
+    setPoLoadingMore(true);
+    try {
+      await fetchPOData(false);
+    } catch (error) {
+      console.error('Error loading more purchase orders:', error);
+    } finally {
+      setPoLoadingMore(false);
     }
   };
 
@@ -239,13 +424,14 @@ export default function AdminDashboard() {
       });
 
       if (response.ok) {
+        toast.showSuccess('Service request approved successfully!');
         fetchData();
       } else {
-        alert('Failed to approve service request');
+        toast.showError('Failed to approve service request');
       }
     } catch (error) {
       console.error('Error approving SR:', error);
-      alert('Failed to approve service request');
+      toast.showError('Failed to approve service request');
     }
   };
 
@@ -258,13 +444,14 @@ export default function AdminDashboard() {
       });
 
       if (response.ok) {
+        toast.showSuccess('Service request rejected successfully!');
         fetchData();
       } else {
-        alert('Failed to reject service request');
+        toast.showError('Failed to reject service request');
       }
     } catch (error) {
       console.error('Error rejecting SR:', error);
-      alert('Failed to reject service request');
+      toast.showError('Failed to reject service request');
     }
   };
 
@@ -283,7 +470,7 @@ export default function AdminDashboard() {
     manpower: any;
     schedule: any[];
     createMR?: boolean;
-  }) => {
+  }): Promise<void> => {
     if (!selectedSR) return;
 
     try {
@@ -311,23 +498,25 @@ export default function AdminDashboard() {
         setActiveTab('jo');
         
         // Show success message
-        alert(`Job Order ${result.jobOrder.joNumber} created successfully!`);
+        toast.showSuccess(`Job Order ${result.jobOrder.joNumber} created successfully!`);
       } else {
         const error = await response.json();
-        alert(error.error || 'Failed to create Job Order');
+        toast.showError(error.error || 'Failed to create Job Order');
         // Refresh data even on error to ensure UI is up to date
         fetchData();
+        throw new Error(error.error || 'Failed to create Job Order');
       }
     } catch (error) {
       console.error('Error creating Job Order:', error);
-      alert('Failed to create Job Order');
+      toast.showError('Failed to create Job Order');
+      throw error; // Re-throw to let the form handle it
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading...</div>
+        <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
       </div>
     );
   }
@@ -409,7 +598,7 @@ export default function AdminDashboard() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-8">
+        <div className={`grid grid-cols-2 sm:grid-cols-2 ${(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || (user?.role === 'APPROVER' && normalizeDept(user?.department) === 'purchasing')) ? 'md:grid-cols-4' : 'md:grid-cols-3'} gap-4 sm:gap-6 mb-8`}>
           <div className="bg-white rounded-lg shadow-md p-6">
             <div className="text-sm font-medium text-gray-500">Pending Requests</div>
             <div className="text-3xl font-bold text-yellow-600 mt-2">{pendingSRs.length}</div>
@@ -425,10 +614,14 @@ export default function AdminDashboard() {
               {inProgressJOs.length} in progress, {completedJOs.length} completed
             </div>
           </div>
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="text-sm font-medium text-gray-500">Purchase Orders</div>
-            <div className="text-3xl font-bold text-purple-600 mt-2">{purchaseOrders.length}</div>
-          </div>
+          {/* Show Purchase Orders stat to Purchasing, Finance, President, ADMIN, and SUPER_ADMIN */}
+          {(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || 
+            (user?.role === 'APPROVER' && (normalizeDept(user?.department) === 'purchasing' || normalizeDept(user?.department) === 'finance'))) && (
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="text-sm font-medium text-gray-500">Purchase Orders</div>
+              <div className="text-3xl font-bold text-purple-600 mt-2">{purchaseOrders.length}</div>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}
@@ -443,7 +636,7 @@ export default function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Service Requests ({serviceRequests.length})
+                Service Requests ({srTotalCount})
               </button>
               <button
                 onClick={() => setActiveTab('jo')}
@@ -453,18 +646,22 @@ export default function AdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Job Orders ({jobOrders.length})
+                Job Orders ({joTotalCount})
               </button>
-              <button
-                onClick={() => setActiveTab('po')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'po'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                Purchase Orders ({purchaseOrders.length})
-              </button>
+              {/* Show Purchase Orders tab to Purchasing, Finance, President, ADMIN, and SUPER_ADMIN */}
+              {(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || 
+                (user?.role === 'APPROVER' && (normalizeDept(user?.department) === 'purchasing' || normalizeDept(user?.department) === 'finance'))) && (
+                <button
+                  onClick={() => setActiveTab('po')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'po'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Purchase Orders ({poTotalCount})
+                </button>
+              )}
             </nav>
           </div>
         </div>
@@ -519,6 +716,45 @@ export default function AdminDashboard() {
                 <option value="APPROVED">Approved</option>
                 <option value="REJECTED">Rejected</option>
                 <option value="DRAFT">Draft</option>
+              </select>
+            </div>
+          )}
+          {activeTab === 'jo' && (
+            <div className="sm:w-auto">
+              <select
+                value={filterJOStatus}
+                onChange={(e) => setFilterJOStatus(e.target.value)}
+                className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+              >
+                <option value="all">All Status</option>
+                <option value="needs_approval">Needs Approval</option>
+                <option value="DRAFT">Draft</option>
+                <option value="BUDGET_CLEARED">Budget Cleared</option>
+                <option value="APPROVED">Approved</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="CLOSED">Closed</option>
+              </select>
+            </div>
+          )}
+          {/* Show Purchase Orders filter to Purchasing, Finance, President, ADMIN, and SUPER_ADMIN */}
+          {activeTab === 'po' && (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || 
+            (user?.role === 'APPROVER' && (normalizeDept(user?.department) === 'purchasing' || normalizeDept(user?.department) === 'finance'))) && (
+            <div className="sm:w-auto">
+              <select
+                value={filterPOStatus}
+                onChange={(e) => setFilterPOStatus(e.target.value)}
+                className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
+              >
+                <option value="all">All Status</option>
+                <option value="needs_approval">Needs Approval</option>
+                <option value="DRAFT">Draft</option>
+                <option value="SUBMITTED">Submitted</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+                <option value="PURCHASED">Purchased</option>
+                <option value="RECEIVED">Received</option>
+                <option value="CLOSED">Closed</option>
               </select>
             </div>
           )}
@@ -624,7 +860,32 @@ export default function AdminDashboard() {
         {activeTab === 'jo' && (
           <div>
             {(() => {
-              const filteredJOs = filterBySearch(jobOrders, 'jo');
+              let filteredJOs = filterBySearch(jobOrders, 'jo');
+              
+              // Apply status filter
+              if (filterJOStatus === 'needs_approval') {
+                // Filter to show only Job Orders that need approval
+                filteredJOs = filteredJOs.filter((jo) => {
+                  if (jo.status === 'CLOSED') return false;
+                  const isServiceType = jo.type === 'SERVICE';
+                  const operationsApproved = jo.approvals?.some((a: any) => 
+                    a.role === 'OPERATIONS' && a.action === 'APPROVED'
+                  );
+                  const managementApproved = jo.approvals?.some((a: any) => 
+                    a.role === 'MANAGEMENT' && a.action === 'APPROVED'
+                  );
+                  const financeApproved = jo.approvals?.some((a: any) => 
+                    a.role === 'FINANCE' && (a.action === 'NOTED' || a.action === 'BUDGET_APPROVED')
+                  );
+                  if (isServiceType) {
+                    return !operationsApproved || !managementApproved;
+                  } else {
+                    return !financeApproved || !managementApproved;
+                  }
+                });
+              } else if (filterJOStatus !== 'all') {
+                filteredJOs = filteredJOs.filter((jo) => jo.status === filterJOStatus);
+              }
               
               return filteredJOs.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -635,7 +896,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="bg-white rounded-lg shadow-md p-12 text-center">
                   <p className="text-gray-500">
-                    {searchQuery 
+                    {searchQuery || filterJOStatus !== 'all'
                       ? 'No job orders match your search criteria.' 
                       : 'No job orders found.'}
                   </p>
@@ -644,10 +905,29 @@ export default function AdminDashboard() {
             })()}
           </div>
         )}
-        {activeTab === 'po' && (
+        {/* Show Purchase Orders content to Purchasing, Finance, President, ADMIN, and SUPER_ADMIN */}
+        {activeTab === 'po' && (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' || 
+          (user?.role === 'APPROVER' && (normalizeDept(user?.department) === 'purchasing' || normalizeDept(user?.department) === 'finance'))) && (
           <div>
             {(() => {
-              const filteredPOs = filterBySearch(purchaseOrders, 'po');
+              let filteredPOs = filterBySearch(purchaseOrders, 'po');
+              
+              // Apply status filter
+              if (filterPOStatus === 'needs_approval') {
+                // Filter to show only Purchase Orders that need approval
+                filteredPOs = filteredPOs.filter((po) => {
+                  if (po.status === 'CLOSED' || po.status === 'REJECTED' || po.status === 'DRAFT') return false;
+                  const financeApproved = po.approvals?.some((a: any) => 
+                    a.role === 'FINANCE' && a.action === 'APPROVED'
+                  );
+                  const managementApproved = po.approvals?.some((a: any) => 
+                    a.role === 'MANAGEMENT' && a.action === 'APPROVED'
+                  );
+                  return !financeApproved || !managementApproved;
+                });
+              } else if (filterPOStatus !== 'all') {
+                filteredPOs = filteredPOs.filter((po) => po.status === filterPOStatus);
+              }
               
               return filteredPOs.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -658,7 +938,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="bg-white rounded-lg shadow-md p-12 text-center">
                   <p className="text-gray-500">
-                    {searchQuery 
+                    {searchQuery || filterPOStatus !== 'all'
                       ? 'No purchase orders match your search criteria.' 
                       : 'No purchase orders found.'}
                   </p>
