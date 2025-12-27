@@ -21,7 +21,6 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
   const [withinApprovedBudget, setWithinApprovedBudget] = useState(
     jobOrder.budget?.withinApprovedBudget || false
   );
-  const [comments, setComments] = useState('');
 
   const formatCurrency = (value: number) =>
     value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -51,7 +50,9 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
   // Check if user can edit budget (Finance by department or President/SUPER_ADMIN)
   const userRole = currentUser?.role as any;
   const userDepartment = (currentUser as any)?.department;
-  const canEditBudget = userDepartment === 'Finance' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+  const isFinance = userDepartment === 'Finance';
+  const isPresident = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+  const canEditBudget = isFinance || isPresident;
   
   const financeApproved = jobOrder.approvals?.some(
     (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
@@ -59,49 +60,29 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
   const presidentApproved = jobOrder.approvals?.some(
     (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
   );
-  const budgetCleared = jobOrder.status === 'APPROVED' || (financeApproved && presidentApproved);
+  // Budget is only cleared when BOTH Finance and President have approved the budget specifically
+  // NOT when Job Order status is APPROVED - these are separate approval processes
+  const budgetCleared = financeApproved && presidentApproved;
 
-  // For Service type, skip budget approval - only Material Requisition needs budget approval
+  // Check if Service type has materials - if so, it needs budget approval
   const isServiceType = jobOrder.type === 'SERVICE';
-  const canApproveBudget = canEditBudget && !budgetCleared && !isServiceType;
+  const hasMaterials = jobOrder.materials && jobOrder.materials.length > 0;
+  const needsBudgetApproval = !isServiceType || (isServiceType && hasMaterials);
+  
+  // Finance can approve anytime (if not already approved by them)
+  // President can only approve AFTER Finance has approved
+  const canApproveBudget = canEditBudget && !budgetCleared && needsBudgetApproval && 
+    (isFinance || (isPresident && financeApproved));
+  
+  // President cannot edit budget until Finance has approved
+  const canActuallyEditBudget = isFinance || (isPresident && financeApproved);
   const hasApproved = financeApproved || presidentApproved;
   const userHasApproved = jobOrder.approvals?.some(
     (a: any) => a.userId === currentUser?.id && a.action === 'BUDGET_APPROVED'
   );
 
-  const handleUpdateBudget = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/job-orders/${jobOrder.id || jobOrder._id}/budget`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          estimatedTotalCost: parseFloat(estimatedTotalCost.toString()) || 0,
-          withinApprovedBudget,
-        }),
-      });
-
-      if (response.ok) {
-        toast.showSuccess('Budget information updated successfully!');
-        onBudgetUpdate?.();
-      } else {
-        const error = await response.json();
-        toast.showError(error.error || 'Failed to update budget');
-      }
-    } catch (error) {
-      console.error('Error updating budget:', error);
-      toast.showError('Failed to update budget');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleApproveBudget = async () => {
-    if (!comments.trim()) {
-      toast.showWarning('Please provide comments for budget approval.');
-      return;
-    }
-
     const proceed = await confirm('Approve this budget? This will add your approval to the Job Order.', {
       title: 'Approve Budget',
       confirmButtonColor: 'green',
@@ -119,13 +100,11 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
           estimatedTotalCost: parseFloat(estimatedTotalCost.toString()) || 0,
           withinApprovedBudget,
           action: 'APPROVE',
-          comments: comments.trim(),
         }),
       });
 
       if (response.ok) {
         toast.showSuccess('Budget approved successfully!');
-        setComments('');
         onBudgetUpdate?.();
       } else {
         const error = await response.json();
@@ -140,11 +119,6 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
   };
 
   const handleRejectBudget = async () => {
-    if (!comments.trim()) {
-      toast.showWarning('Please provide comments for budget rejection.');
-      return;
-    }
-
     const proceed = await confirm('Reject this budget? This will add your rejection to the Job Order.', {
       title: 'Reject Budget',
       confirmButtonColor: 'red',
@@ -160,13 +134,11 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'REJECT',
-          comments: comments.trim(),
         }),
       });
 
       if (response.ok) {
         toast.showSuccess('Budget rejected.');
-        setComments('');
         onBudgetUpdate?.();
       } else {
         const error = await response.json();
@@ -204,8 +176,8 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
     <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Budget Information</h2>
       
-      {/* Budget Status - Only show for Material Requisition type */}
-      {!isServiceType && budgetCleared && (
+      {/* Budget Status - Show when budget is cleared */}
+      {needsBudgetApproval && budgetCleared && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
           <p className="text-sm font-medium text-green-800">
             ✓ Budget Cleared - Approved by Finance and President
@@ -213,8 +185,8 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
         </div> 
       )}
 
-      {/* Budget Approval Status - Only show for Material Requisition type */}
-      {!isServiceType && hasApproved && !budgetCleared && (
+      {/* Budget Approval Status - Show when waiting for approval */}
+      {needsBudgetApproval && hasApproved && !budgetCleared && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
           <p className="text-sm text-yellow-800">
             {financeApproved && !presidentApproved && '✓ Finance Approved - Waiting for President approval'}
@@ -223,11 +195,20 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
         </div>
       )}
 
-      {/* Service Type Notice */}
-      {isServiceType && (
+      {/* Service Type Notice - Only show if no materials */}
+      {isServiceType && !hasMaterials && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
           <p className="text-sm text-blue-800">
-            ℹ️ Service type job orders do not require budget approval. Proceed with Operations/President approval.
+            ℹ️ Service type job orders without materials do not require budget approval. Proceed with Operations/President approval to start work.
+          </p>
+        </div>
+      )}
+
+      {/* Service Type with Materials Notice */}
+      {isServiceType && hasMaterials && !budgetCleared && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+          <p className="text-sm text-yellow-800">
+            ⚠️ This Service type Job Order includes materials and requires budget approval from Finance and President before execution can start.
           </p>
         </div>
       )}
@@ -249,7 +230,7 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
                 const num = parseFloat(raw);
                 setEstimatedTotalCost(isNaN(num) ? 0 : num);
               }}
-              disabled={!canEditBudget || budgetCleared}
+              disabled={!canActuallyEditBudget || budgetCleared}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
             {calculatedCost > 0 && estimatedTotalCost !== calculatedCost && (
@@ -257,7 +238,7 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
                 type="button"
                 onClick={() => setEstimatedTotalCost(calculatedCost)}
                 className="text-xs text-blue-600 hover:text-blue-800 underline"
-                disabled={!canEditBudget || budgetCleared}
+                disabled={!canActuallyEditBudget || budgetCleared}
               >
                 Use calculated ({formatCurrency(calculatedCost)})
               </button>
@@ -277,7 +258,7 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
               type="checkbox"
               checked={withinApprovedBudget}
               onChange={(e) => setWithinApprovedBudget(e.target.checked)}
-              disabled={!canEditBudget || budgetCleared}
+              disabled={!canActuallyEditBudget || budgetCleared}
               className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
             <span className="text-sm font-medium text-gray-700">
@@ -286,8 +267,8 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
           </label>
         </div>
 
-        {/* Budget Approvals - Only show for Material Requisition type */}
-        {!isServiceType && jobOrder.approvals && jobOrder.approvals.length > 0 && (
+        {/* Budget Approvals - Show when budget approval is needed */}
+        {needsBudgetApproval && jobOrder.approvals && jobOrder.approvals.length > 0 && (
           <div className="pt-4 border-t">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Budget Approvals</h3>
             <div className="space-y-2">
@@ -315,46 +296,20 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
           </div>
         )}
 
-        {/* Comments for Approval */}
-        {canApproveBudget && (
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Comments {userHasApproved ? '(You have already approved)' : ''}
-            </label>
-            <textarea
-              value={comments}
-              onChange={(e) => setComments(e.target.value)}
-              rows={3}
-              placeholder="Add comments for budget approval/rejection..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        )}
-
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
-          {canEditBudget && !budgetCleared && (
-            <button
-              onClick={handleUpdateBudget}
-              disabled={loading}
-              className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium text-sm sm:text-base"
-            >
-              {loading ? 'Updating...' : 'Update Budget Info'}
-            </button>
-          )}
-
           {canApproveBudget && !userHasApproved && (
             <>
               <button
                 onClick={handleApproveBudget}
-                disabled={loading || !comments.trim()}
+                disabled={loading}
                 className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium text-sm sm:text-base"
               >
                 {loading ? 'Approving...' : 'Approve Budget'}
               </button>
               <button
                 onClick={handleRejectBudget}
-                disabled={loading || !comments.trim()}
+                disabled={loading}
                 className="w-full sm:w-auto px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium text-sm sm:text-base"
               >
                 {loading ? 'Rejecting...' : 'Reject Budget'}
@@ -362,21 +317,27 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
             </>
           )}
 
-          {!canEditBudget && !isServiceType && (
+          {isPresident && !financeApproved && !budgetCleared && needsBudgetApproval && (
+            <p className="text-sm text-yellow-600 font-medium">
+              ⚠️ Finance must approve the budget before President can approve.
+            </p>
+          )}
+
+          {!canEditBudget && needsBudgetApproval && (
             <p className="text-sm text-gray-500">
               Only Finance and President can edit and approve budgets.
             </p>
           )}
 
-          {!isServiceType && budgetCleared && (
+          {needsBudgetApproval && budgetCleared && (
             <p className="text-sm text-green-600 font-medium">
               Budget has been cleared and approved by both Finance and President.
             </p>
           )}
 
-          {isServiceType && (
+          {isServiceType && !hasMaterials && (
             <p className="text-sm text-blue-600 font-medium">
-              Service type job orders skip budget approval. Proceed with Operations/President approval to start work.
+              Service type job orders without materials skip budget approval. Proceed with Operations/President approval to start work.
             </p>
           )}
         </div>

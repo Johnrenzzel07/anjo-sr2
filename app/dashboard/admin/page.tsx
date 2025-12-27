@@ -57,6 +57,7 @@ export default function AdminDashboard() {
   const [srTotalCount, setSrTotalCount] = useState(0);
   const [joTotalCount, setJoTotalCount] = useState(0);
   const [poTotalCount, setPoTotalCount] = useState(0);
+  const [joLoading, setJoLoading] = useState(true); // Track if job orders are still loading
 
   useEffect(() => {
     fetchUser();
@@ -111,9 +112,11 @@ export default function AdminDashboard() {
   useEffect(() => {
     if (user) {
       fetchData(true);
-      if (activeTab === 'jo') {
+      // Always fetch job orders when on SR tab to check for existing JOs
+      if (activeTab === 'sr' || activeTab === 'jo') {
         fetchJOData(true);
-      } else if (activeTab === 'po') {
+      }
+      if (activeTab === 'po') {
         fetchPOData(true);
       }
     }
@@ -225,16 +228,21 @@ export default function AdminDashboard() {
       const response = await fetch('/api/auth/me');
       if (response.ok) {
         const data = await response.json();
-        setUser(data.user);
-        // Redirect if not admin/approver
+        // Redirect if user is not admin/approver
         if (!['ADMIN', 'APPROVER', 'SUPER_ADMIN'].includes(data.user.role)) {
-          router.push('/dashboard/requester');
+          if (data.user.role === 'REQUESTER') {
+            router.replace('/dashboard/requester');
+          } else {
+            router.replace('/login');
+          }
+          return;
         }
+        setUser(data.user);
       } else {
-        router.push('/login');
+        router.replace('/login');
       }
     } catch (error) {
-      router.push('/login');
+      router.replace('/login');
     }
   };
 
@@ -292,6 +300,7 @@ export default function AdminDashboard() {
         setJoSkip(0);
         setJobOrders([]);
         setJoHasMore(true);
+        setJoLoading(true); // Set loading when resetting
       }
       
       const currentJoSkip = resetJO ? 0 : joSkip;
@@ -346,8 +355,12 @@ export default function AdminDashboard() {
       if (joData.totalCount !== undefined) {
         setJoTotalCount(joData.totalCount);
       }
+      setJoLoading(false); // Mark as loaded after fetching
     } catch (error) {
       console.error('Error fetching job orders:', error);
+      setJoLoading(false); // Mark as loaded even on error
+    } finally {
+      setJoLoadingMore(false);
     }
   };
 
@@ -514,8 +527,8 @@ export default function AdminDashboard() {
         const result = await response.json();
         setShowCreateForm(false);
         setSelectedSR(null);
-        // Refresh data immediately to update the hasJO check
-        await fetchData();
+        // Refresh both service requests and job orders to update the hasJO check
+        await Promise.all([fetchData(true), fetchJOData(true)]);
         setActiveTab('jo');
         
         // Show success message
@@ -524,7 +537,7 @@ export default function AdminDashboard() {
         const error = await response.json();
         toast.showError(error.error || 'Failed to create Job Order');
         // Refresh data even on error to ensure UI is up to date
-        fetchData();
+        await Promise.all([fetchData(true), fetchJOData(true)]);
         throw new Error(error.error || 'Failed to create Job Order');
       }
     } catch (error) {
@@ -534,7 +547,8 @@ export default function AdminDashboard() {
     }
   };
 
-  if (loading) {
+  // Show loading until user is confirmed
+  if (loading || !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
@@ -818,8 +832,8 @@ export default function AdminDashboard() {
                            joServiceRequestId === sr._id?.toString();
                   });
                   
-                  // Show button if SR is APPROVED and no JO exists
-                  const canCreateJO = sr.status === 'APPROVED' && !hasJO;
+                  // Show button if SR is APPROVED and no JO exists, but only after job orders have loaded
+                  const canCreateJO = sr.status === 'APPROVED' && !hasJO && !joLoading;
                   
                   return (
                     <div key={srId}>
@@ -833,6 +847,11 @@ export default function AdminDashboard() {
                       {hasJO && (
                         <div className="mt-2 text-sm text-green-600 text-center">
                           ✓ Job Order already created
+                        </div>
+                      )}
+                      {joLoading && sr.status === 'APPROVED' && (
+                        <div className="mt-2 text-sm text-gray-500 text-center">
+                          Checking for existing Job Order...
                         </div>
                       )}
                     </div>

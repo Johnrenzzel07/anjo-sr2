@@ -93,6 +93,17 @@ export default function JobOrderDetail({
     if (hasApproval) return false;
     
     const isServiceType = jobOrder.type === 'SERVICE';
+    const hasMaterials = jobOrder.materials && jobOrder.materials.length > 0;
+    const serviceNeedsBudget = isServiceType && hasMaterials;
+    
+    // Check budget approval status
+    const financeBudgetApproved = jobOrder.approvals.some(
+      (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
+    );
+    const presidentBudgetApproved = jobOrder.approvals.some(
+      (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
+    );
+    const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
     
     // Check if Operations has approved for Service type
     const operationsApproved = jobOrder.approvals.some(a => 
@@ -108,17 +119,34 @@ export default function JobOrderDetail({
         return userRole === 'FINANCE';
       case 'APPROVED':
         if (isServiceType) {
-          // For Service type: Operations must approve first, then President can approve
-          if (isOperations) {
-            return true; // Operations can approve first
+          // For Service type with materials: Budget must be approved first, then Operations, then President
+          if (serviceNeedsBudget) {
+            if (isOperations) {
+              // Operations can approve after budget is cleared
+              return budgetCleared;
+            }
+            if (isPresident) {
+              // President can approve after Operations has approved (and budget is already cleared)
+              return budgetCleared && operationsApproved;
+            }
+            return false;
+          } else {
+            // For Service type without materials: Operations must approve first, then President can approve
+            if (isOperations) {
+              return true; // Operations can approve first
+            }
+            if (isPresident) {
+              return operationsApproved; // President/Admin can only approve after Operations
+            }
+            return false;
           }
-          if (isPresident) {
-            return operationsApproved; // President/Admin can only approve after Operations
-          }
-          return false;
         }
-        // For Material Requisition, only Management can approve
-        return isPresident;
+        // For Material Requisition: Budget must be approved first, then only Management can approve Job Order
+        if (!isPresident) {
+          return false; // Only President can approve Material Requisition Job Orders
+        }
+        // President can only approve Job Order if budget has been cleared
+        return budgetCleared;
       default:
         return false;
     }
@@ -152,18 +180,20 @@ export default function JobOrderDetail({
   const isServiceType = jobOrder.type === 'SERVICE';
   const statusTimeline = isServiceType 
     ? [
-        // Service type timeline (no Budget Cleared, no Closed - ends at Completed)
+        // Service type timeline
         { status: 'DRAFT', label: 'Draft', condition: jobOrder.status !== 'DRAFT' },
         { status: 'APPROVED', label: 'Approved', condition: ['APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
         { status: 'IN_PROGRESS', label: 'In Progress', condition: ['IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
         { status: 'COMPLETED', label: 'Completed', condition: ['COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+        { status: 'CLOSED', label: 'Closed', condition: jobOrder.status === 'CLOSED' },
       ]
     : [
-        // Material Requisition type timeline (Budget approved = Approved, ends at Completed)
+        // Material Requisition type timeline
         { status: 'DRAFT', label: 'Draft', condition: jobOrder.status !== 'DRAFT' },
         { status: 'APPROVED', label: 'Approved', condition: ['BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
         { status: 'IN_PROGRESS', label: 'In Progress', condition: ['IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
         { status: 'COMPLETED', label: 'Completed', condition: ['COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+        { status: 'CLOSED', label: 'Closed', condition: jobOrder.status === 'CLOSED' },
       ];
 
   return (
@@ -250,23 +280,15 @@ export default function JobOrderDetail({
             <span className="font-medium text-gray-700">Work Description / Scope:</span>
             <p className="text-gray-600 mt-1">{jobOrder.workDescription}</p>
           </div>
-          <div>
-            <span className="font-medium text-gray-700">Location of Work:</span>{' '}
-            <span className="text-gray-600">{jobOrder.location}</span>
-          </div>
-          <div>
-            <span className="font-medium text-gray-700">Reason / Justification:</span>
-            <p className="text-gray-600 mt-1">{jobOrder.reason}</p>
-          </div>
         </div>
       </div>
 
-      {/* Materials & Services - Only show for Material Requisition type */}
-      {jobOrder.type === 'MATERIAL_REQUISITION' && (
+      {/* Materials & Services - Show for both Material Requisition and Service type with materials */}
+      {((jobOrder.type === 'MATERIAL_REQUISITION') || (jobOrder.type === 'SERVICE' && jobOrder.materials && jobOrder.materials.length > 0)) && (
         <>
           <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
             <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Materials & Services Required</h2>
-            {jobOrder.materials.length > 0 ? (
+            {jobOrder.materials && jobOrder.materials.length > 0 ? (
               <div className="overflow-x-auto -mx-4 sm:mx-0">
                 <div className="inline-block min-w-full align-middle px-4 sm:px-0">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -302,7 +324,7 @@ export default function JobOrderDetail({
             )}
           </div>
 
-          {/* Budget Panel for Material Requisition */}
+          {/* Budget Panel - Show for Material Requisition or Service type with materials */}
           <div className="mt-6">
             <BudgetPanel
               jobOrder={jobOrder}
@@ -313,35 +335,37 @@ export default function JobOrderDetail({
         </>
       )}
 
-      {/* Manpower */}
-      <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
-        <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Manpower / Responsibility</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="font-medium text-gray-700">Assigned Unit / Team:</span>{' '}
-            <span className="text-gray-600">{jobOrder.manpower?.assignedUnit || 'Not assigned'}</span>
-          </div>
-          <div>
-            <span className="font-medium text-gray-700">Supervisor-in-Charge:</span>{' '}
-            <span className="text-gray-600">{jobOrder.manpower?.supervisorInCharge || 'Not assigned'}</span>
-          </div>
-          <div>
-            <span className="font-medium text-gray-700">Supervisor Department:</span>{' '}
-            <span className="text-gray-600">{jobOrder.manpower?.supervisorDept || 'Not assigned'}</span>
-          </div>
-          {jobOrder.manpower?.outsource && (
+      {/* Manpower - Only show for Service type */}
+      {jobOrder.type === 'SERVICE' && (
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Manpower / Responsibility</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="font-medium text-gray-700">Outsource:</span>{' '}
-              <span className="text-gray-600">{jobOrder.manpower.outsource}</span>
-              {jobOrder.manpower.outsourcePrice && (
-                <span className="text-gray-600 ml-2">
-                  (₱{jobOrder.manpower.outsourcePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
-                </span>
-              )}
+              <span className="font-medium text-gray-700">Assigned Unit / Team:</span>{' '}
+              <span className="text-gray-600">{jobOrder.manpower?.assignedUnit || 'Not assigned'}</span>
             </div>
-          )}
+            <div>
+              <span className="font-medium text-gray-700">Supervisor-in-Charge:</span>{' '}
+              <span className="text-gray-600">{jobOrder.manpower?.supervisorInCharge || 'Not assigned'}</span>
+            </div>
+            <div>
+              <span className="font-medium text-gray-700">Supervisor Department:</span>{' '}
+              <span className="text-gray-600">{jobOrder.manpower?.supervisorDept || 'Not assigned'}</span>
+            </div>
+            {jobOrder.manpower?.outsource && (
+              <div>
+                <span className="font-medium text-gray-700">Outsource:</span>{' '}
+                <span className="text-gray-600">{jobOrder.manpower.outsource}</span>
+                {jobOrder.manpower.outsourcePrice && (
+                  <span className="text-gray-600 ml-2">
+                    (₱{jobOrder.manpower.outsourcePrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Schedule & Milestones */}
       <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
@@ -452,9 +476,26 @@ export default function JobOrderDetail({
 
         {!canApprove('APPROVED') && (
           <p className="text-sm text-gray-500 text-center py-4">
-            {jobOrder.approvals && jobOrder.approvals.length > 0 
-              ? 'You have already provided your approval or no further approvals are needed.'
-              : 'No approval actions available for your role.'}
+            {(() => {
+              if (jobOrder.approvals && jobOrder.approvals.length > 0) {
+                // Check if it's Material Requisition and budget not cleared
+                if (jobOrder.type === 'MATERIAL_REQUISITION') {
+                  const financeBudgetApproved = jobOrder.approvals.some(
+                    (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
+                  );
+                  const presidentBudgetApproved = jobOrder.approvals.some(
+                    (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
+                  );
+                  const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
+                  
+                  if (!budgetCleared) {
+                    return 'Budget must be approved by Finance and President before Job Order can be approved.';
+                  }
+                }
+                return 'You have already provided your approval or no further approvals are needed.';
+              }
+              return 'No approval actions available for your role.';
+            })()}
           </p>
         )}
       </div>

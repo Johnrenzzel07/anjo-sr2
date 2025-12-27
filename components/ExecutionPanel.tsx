@@ -17,7 +17,6 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
   const toast = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(false);
-  const [workCompletionNotes, setWorkCompletionNotes] = useState(jobOrder.acceptance?.workCompletionNotes || '');
 
   const userRole = currentUser?.role as string;
   const userDepartment = (currentUser as any)?.department;
@@ -27,12 +26,27 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
                                  (userRole === 'APPROVER' && userDepartment === 'Operations');
 
   const isMaterialReq = jobOrder.type === 'MATERIAL_REQUISITION';
+  const isServiceType = jobOrder.type === 'SERVICE';
+  const hasMaterials = jobOrder.materials && jobOrder.materials.length > 0;
+  
+  // Check budget approval for Service type with materials
+  const financeBudgetApproved = jobOrder.approvals?.some(
+    (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
+  );
+  const presidentBudgetApproved = jobOrder.approvals?.some(
+    (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
+  );
+  const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
+  const serviceNeedsBudget = isServiceType && hasMaterials;
+  const serviceBudgetReady = !serviceNeedsBudget || budgetCleared;
 
-  // For Service type: execution can start once JO is APPROVED
+  // For Service type without materials: execution can start once JO is APPROVED
+  // For Service type with materials: execution can start once JO is APPROVED AND budget is cleared
   // For Material Requisition: JO must be APPROVED AND a Purchase Order must exist AND material transfer completed
   const canStartExecution = 
     jobOrder.status === 'APPROVED' &&
     canManageExecutionRole &&
+    serviceBudgetReady &&
     (!isMaterialReq || (!!hasPurchaseOrder && !!hasCompletedTransfer));
 
   const canCompleteExecution = 
@@ -74,11 +88,6 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
   };
 
   const handleCompleteExecution = async () => {
-    if (!workCompletionNotes.trim()) {
-      toast.showWarning('Please provide work completion notes before completing execution.');
-      return;
-    }
-
     const proceed = await confirm('Complete execution for this Job Order? This will set the status to COMPLETED.', {
       title: 'Complete Execution',
       confirmButtonColor: 'green',
@@ -94,7 +103,6 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'COMPLETE',
-          workCompletionNotes: workCompletionNotes.trim(),
         }),
       });
 
@@ -169,6 +177,15 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
         </div>
       )}
 
+      {/* Info for Service type with materials about budget requirement */}
+      {serviceNeedsBudget && !budgetCleared && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
+          <p className="text-sm text-yellow-800">
+            ⚠️ This Service type Job Order includes materials. Budget must be approved by Finance and President before execution can start.
+          </p>
+        </div>
+      )}
+
       {/* Schedule Milestones */}
       {jobOrder.schedule && jobOrder.schedule.length > 0 && (
         <div className="mb-4">
@@ -211,21 +228,6 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
         </div>
       )}
 
-      {/* Work Completion Notes (for completion) */}
-      {jobOrder.status === 'IN_PROGRESS' && (
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Work Completion Notes <span className="text-red-500">*</span>
-          </label>
-          <textarea
-            value={workCompletionNotes}
-            onChange={(e) => setWorkCompletionNotes(e.target.value)}
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            placeholder="Describe the work completed, any issues encountered, and final status..."
-          />
-        </div>
-      )}
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
@@ -242,7 +244,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
         {canCompleteExecution && (
           <button
             onClick={handleCompleteExecution}
-            disabled={loading || !workCompletionNotes.trim()}
+            disabled={loading}
             className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium text-sm sm:text-base"
           >
             {loading ? 'Completing...' : 'Complete Execution'}
@@ -252,8 +254,14 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
         {!canStartExecution && !canCompleteExecution && jobOrder.status !== 'COMPLETED' && (
           <p className="text-sm text-gray-500">
             {jobOrder.status === 'IN_PROGRESS' 
-              ? 'Execution is in progress. Add completion notes above to complete.'
-              : 'Execution can only be started by Operations or Admin when Job Order is APPROVED or BUDGET_CLEARED.'}
+              ? 'Execution is in progress. Click the button above to complete execution.'
+              : serviceNeedsBudget && !budgetCleared
+                ? 'Execution can only be started after budget is approved by Finance and President.'
+                : isMaterialReq && !hasPurchaseOrder
+                  ? 'Create a Purchase Order and complete material transfer before starting execution.'
+                  : isMaterialReq && !hasCompletedTransfer
+                    ? 'Complete the material transfer before starting execution.'
+                    : 'Execution can only be started by Operations or Admin when Job Order is APPROVED.'}
           </p>
         )}
       </div>

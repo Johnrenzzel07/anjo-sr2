@@ -88,6 +88,24 @@ export async function PATCH(
         : (jobOrder.budget?.withinApprovedBudget || false),
     };
 
+    // Check if Finance has approved (required before President can approve/update)
+    const financeApproved = jobOrder.approvals.some(
+      (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
+    );
+    
+    // President cannot update or approve budget until Finance has approved
+    // Only block if there's an actual update attempt (action is set, or budget fields are being updated)
+    const isUpdatingBudget = action || 
+      (estimatedTotalCost !== undefined && estimatedTotalCost !== (jobOrder.budget?.estimatedTotalCost || 0)) ||
+      (withinApprovedBudget !== undefined && withinApprovedBudget !== (jobOrder.budget?.withinApprovedBudget || false));
+    
+    if (isPresident && !financeApproved && isUpdatingBudget) {
+      return NextResponse.json(
+        { error: 'Finance must approve the budget before President can update or approve it' },
+        { status: 400 }
+      );
+    }
+
     // Handle budget approval action
     if (action === 'APPROVE') {
       // Add budget approval to approvals array
@@ -107,9 +125,6 @@ export async function PATCH(
       }
 
       // Update status to APPROVED if both Finance and President approved budget
-      const financeApproved = jobOrder.approvals.some(
-        (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
-      );
       const presidentApproved = jobOrder.approvals.some(
         (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
       );

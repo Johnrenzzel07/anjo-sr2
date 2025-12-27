@@ -17,6 +17,7 @@ export default function Home() {
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkingAuth, setCheckingAuth] = useState(true); // Track auth check state
   const [activeTab, setActiveTab] = useState<'sr' | 'jo'>('jo');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedSR, setSelectedSR] = useState<ServiceRequest | null>(null);
@@ -26,10 +27,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (user) {
+    if (user && !checkingAuth) {
       fetchData();
     }
-  }, [user]);
+  }, [user, checkingAuth]);
 
   const checkAuth = async () => {
     try {
@@ -37,17 +38,20 @@ export default function Home() {
       if (response.ok) {
         const data = await response.json();
         setUser(data.user);
-        // Redirect to appropriate dashboard
+        setCheckingAuth(false);
+        // Redirect to appropriate dashboard immediately
         if (data.user.role === 'REQUESTER') {
-          router.push('/dashboard/requester');
+          router.replace('/dashboard/requester');
         } else if (['ADMIN', 'APPROVER', 'SUPER_ADMIN'].includes(data.user.role)) {
-          router.push('/dashboard/admin');
+          router.replace('/dashboard/admin');
         }
       } else {
-        router.push('/login');
+        setCheckingAuth(false);
+        router.replace('/login'); // Use replace to avoid back button issues
       }
     } catch (error) {
-      router.push('/login');
+      setCheckingAuth(false);
+      router.replace('/login');
     }
   };
 
@@ -141,12 +145,18 @@ export default function Home() {
     }
   };
 
-  if (loading) {
+  // Show loading while checking auth - don't render any dashboard content
+  if (checkingAuth || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
       </div>
     );
+  }
+
+  // If no user after auth check, don't render (should have redirected)
+  if (!user) {
+    return null;
   }
 
   return (

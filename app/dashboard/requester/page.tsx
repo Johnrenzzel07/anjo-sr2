@@ -77,12 +77,21 @@ export default function RequesterDashboard() {
       const response = await fetch('/api/auth/me');
       if (response.ok) {
         const data = await response.json();
+        // Redirect if user is not a requester
+        if (data.user.role !== 'REQUESTER') {
+          if (['ADMIN', 'APPROVER', 'SUPER_ADMIN'].includes(data.user.role)) {
+            router.replace('/dashboard/admin');
+          } else {
+            router.replace('/login');
+          }
+          return;
+        }
         setUser(data.user);
       } else {
-        router.push('/login');
+        router.replace('/login');
       }
     } catch (error) {
-      router.push('/login');
+      router.replace('/login');
     }
   };
 
@@ -223,7 +232,8 @@ export default function RequesterDashboard() {
     }
   };
 
-  if (loading) {
+  // Show loading until user is confirmed
+  if (loading || !user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />

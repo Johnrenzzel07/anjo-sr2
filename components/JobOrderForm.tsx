@@ -179,8 +179,8 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
         />
       </div>
 
-      {/* Materials & Services - Only show for Material Requisition type */}
-      {type === 'MATERIAL_REQUISITION' && (
+      {/* Materials & Services - Show for Material Requisition and Service type */}
+      {(type === 'MATERIAL_REQUISITION' || type === 'SERVICE') && (
         <div>
           <div className="flex justify-between items-center mb-3">
             <label className="block text-sm font-medium text-gray-700">

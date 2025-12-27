@@ -293,6 +293,15 @@ export default function JobOrderPage() {
                               userRole === 'SUPER_ADMIN' ||
                               (userRole === 'APPROVER' && userDepartment === 'Purchasing');
           
+          // Check if budget has been approved (required for Material Requisition)
+          const financeBudgetApproved = jobOrder.approvals?.some(
+            (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
+          );
+          const presidentBudgetApproved = jobOrder.approvals?.some(
+            (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
+          );
+          const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
+          
           // Only show the card if user is authorized
           if (!canCreatePO) {
             return null;
@@ -319,7 +328,9 @@ export default function JobOrderPage() {
                     <p className="text-gray-900 font-medium">Ready to Create Purchase Order</p>
                     <p className="text-xs text-gray-500 mt-1">
                       {isMaterialRequisition 
-                        ? `This Material Requisition Job Order has ${jobOrder.materials?.length || 0} material(s) ready for purchase`
+                        ? budgetCleared
+                          ? `This Material Requisition Job Order has ${jobOrder.materials?.length || 0} material(s) ready for purchase`
+                          : 'Budget must be approved by Finance and President before Purchase Order can be created'
                         : 'This Job Order has materials that can be converted to a Purchase Order'}
                     </p>
                   </div>
@@ -329,11 +340,15 @@ export default function JobOrderPage() {
                         toast.showWarning('Purchase Orders can only be created from Material Requisition Job Orders. Please create a new Job Order with type "Material Requisition".');
                         return;
                       }
+                      if (isMaterialRequisition && !budgetCleared) {
+                        toast.showWarning('Budget must be approved by Finance and President before Purchase Order can be created.');
+                        return;
+                      }
                       setShowCreatePO(true);
                     }}
-                    disabled={jobOrder.type && !isMaterialRequisition}
+                    disabled={(jobOrder.type && !isMaterialRequisition) || (isMaterialRequisition && !budgetCleared)}
                     className={`px-6 py-2 rounded-md font-medium shadow-sm ${
-                      jobOrder.type && !isMaterialRequisition
+                      (jobOrder.type && !isMaterialRequisition) || (isMaterialRequisition && !budgetCleared)
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-blue-600 text-white hover:bg-blue-700'
                     }`}

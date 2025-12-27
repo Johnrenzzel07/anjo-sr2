@@ -212,6 +212,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // For Material Requisition, check if budget has been approved
+    const approvals = (jobOrder as any)?.approvals || [];
+    const financeBudgetApproved = approvals.some(
+      (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
+    );
+    const presidentBudgetApproved = approvals.some(
+      (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
+    );
+    const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
+
+    if (!budgetCleared) {
+      return NextResponse.json(
+        { 
+          error: 'Budget must be approved before Purchase Order can be created',
+          details: 'The budget for this Material Requisition Job Order must be approved by both Finance and President before a Purchase Order can be created.',
+          solution: 'Please ensure the budget is approved in the Budget Information section before creating a Purchase Order.'
+        },
+        { status: 400 }
+      );
+    }
+
     // Check if PO already exists for this JO
     const existingPO = await PurchaseOrder.findOne({ joId });
     if (existingPO) {

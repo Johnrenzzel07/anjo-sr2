@@ -15,20 +15,11 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
   const toast = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(false);
-  const [actualStartDate, setActualStartDate] = useState(
-    jobOrder.acceptance?.actualStartDate ? jobOrder.acceptance.actualStartDate.split('T')[0] : ''
-  );
-  const [actualCompletionDate, setActualCompletionDate] = useState(
-    jobOrder.acceptance?.actualCompletionDate ? jobOrder.acceptance.actualCompletionDate.split('T')[0] : ''
-  );
   const [workCompletionNotes, setWorkCompletionNotes] = useState(
     jobOrder.acceptance?.workCompletionNotes || ''
   );
   const [serviceAcceptedBy, setServiceAcceptedBy] = useState(
     jobOrder.acceptance?.serviceAcceptedBy || ''
-  );
-  const [dateAccepted, setDateAccepted] = useState(
-    jobOrder.acceptance?.dateAccepted ? jobOrder.acceptance.dateAccepted.split('T')[0] : ''
   );
 
   // Only authorized users (Operations, Admin, Super Admin) can edit acceptance info
@@ -46,37 +37,6 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
     jobOrder.status === 'COMPLETED' && 
     (currentUser?.role === 'DEPARTMENT_HEAD' || currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN');
 
-  const handleUpdateAcceptance = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch(`/api/job-orders/${jobOrder.id || jobOrder._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          acceptance: {
-            actualStartDate: actualStartDate ? new Date(actualStartDate).toISOString() : undefined,
-            actualCompletionDate: actualCompletionDate ? new Date(actualCompletionDate).toISOString() : undefined,
-            workCompletionNotes: workCompletionNotes.trim() || undefined,
-            serviceAcceptedBy: serviceAcceptedBy.trim() || undefined,
-            dateAccepted: dateAccepted ? new Date(dateAccepted).toISOString() : undefined,
-          },
-        }),
-      });
-
-      if (response.ok) {
-        toast.showSuccess('Acceptance information updated successfully!');
-        onAcceptanceUpdate?.();
-      } else {
-        const error = await response.json();
-        toast.showError(error.error || 'Failed to update acceptance information');
-      }
-    } catch (error) {
-      console.error('Error updating acceptance:', error);
-      toast.showError('Failed to update acceptance information');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleAcceptService = async () => {
     if (!serviceAcceptedBy.trim()) {
@@ -101,6 +61,7 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
         body: JSON.stringify({
           acceptance: {
             ...jobOrder.acceptance,
+            workCompletionNotes: workCompletionNotes.trim() || undefined,
             serviceAcceptedBy: serviceAcceptedBy.trim(),
             dateAccepted: acceptanceDate,
           },
@@ -162,55 +123,47 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
 
       {hasAcceptanceInfo || canEditAcceptance ? (
         <div className="space-y-4">
-          {/* Actual Start Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Actual Start Date
-            </label>
-            <input
-              type="date"
-              value={actualStartDate}
-              onChange={(e) => setActualStartDate(e.target.value)}
-              disabled={!canEditAcceptance || loading}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-            />
-            {jobOrder.acceptance?.actualStartDate && (
+          {/* Actual Start Date - Read-only, set automatically during execution */}
+          {jobOrder.acceptance?.actualStartDate && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Actual Start Date
+              </label>
+              <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700">
+                {new Date(jobOrder.acceptance.actualStartDate).toLocaleDateString()}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
-                Previously set: {new Date(jobOrder.acceptance.actualStartDate).toLocaleDateString()}
+                Set automatically when execution started
               </p>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Actual Completion Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Actual Completion Date
-            </label>
-            <input
-              type="date"
-              value={actualCompletionDate}
-              onChange={(e) => setActualCompletionDate(e.target.value)}
-              disabled={!canEditAcceptance || loading}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-            />
-            {jobOrder.acceptance?.actualCompletionDate && (
+          {/* Actual Completion Date - Read-only, set automatically during execution */}
+          {jobOrder.acceptance?.actualCompletionDate && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Actual Completion Date
+              </label>
+              <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700">
+                {new Date(jobOrder.acceptance.actualCompletionDate).toLocaleDateString()}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
-                Previously set: {new Date(jobOrder.acceptance.actualCompletionDate).toLocaleDateString()}
+                Set automatically when execution completed
               </p>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Work Completion Notes */}
+          {/* Work Completion Notes - Optional */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Work Completion Notes
+              Work Completion Notes (Optional)
             </label>
             <textarea
               value={workCompletionNotes}
               onChange={(e) => setWorkCompletionNotes(e.target.value)}
               rows={4}
-              disabled={!canEditAcceptance || loading}
-              placeholder="Describe the completed work, any issues encountered, final status, and follow-up requirements..."
+              disabled={loading || !!jobOrder.acceptance?.serviceAcceptedBy}
+              placeholder="Describe the completed work, any issues encountered, final status, and follow-up requirements (optional)..."
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
             />
           </div>
@@ -243,34 +196,25 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
                   )}
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Date Accepted
-                  </label>
-                  <input
-                    type="date"
-                    value={dateAccepted}
-                    onChange={(e) => setDateAccepted(e.target.value)}
-                    disabled={loading || !!jobOrder.acceptance?.dateAccepted}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  />
-                </div>
+                {jobOrder.acceptance?.dateAccepted && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Date Accepted
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700">
+                      {new Date(jobOrder.acceptance.dateAccepted).toLocaleDateString()}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Set automatically when service was accepted
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
-            {canEditAcceptance && (
-              <button
-                onClick={handleUpdateAcceptance}
-                disabled={loading}
-                className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium text-sm sm:text-base"
-              >
-                {loading ? 'Updating...' : 'Update Acceptance Info'}
-              </button>
-            )}
-
             {canAcceptService && !jobOrder.acceptance?.serviceAcceptedBy && (
               <button
                 onClick={handleAcceptService}
@@ -286,6 +230,12 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
                 <span className="font-medium">✓</span>
                 <span>Service accepted by {jobOrder.acceptance.serviceAcceptedBy}</span>
               </div>
+            )}
+
+            {canEditAcceptance && !canAcceptService && jobOrder.status !== 'CLOSED' && (
+              <p className="text-sm text-gray-500">
+                Start and completion dates are set automatically during execution. You can add optional completion notes above.
+              </p>
             )}
           </div>
         </div>
