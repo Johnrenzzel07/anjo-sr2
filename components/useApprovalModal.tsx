@@ -9,6 +9,7 @@ interface ApprovalModalOptions {
   confirmButtonText?: string;
   confirmButtonColor?: 'green' | 'blue' | 'red' | 'purple';
   placeholder?: string;
+  showComments?: boolean; // Whether to show comments field
 }
 
 export function useApprovalModal() {
@@ -52,6 +53,7 @@ export function useApprovalModal() {
       confirmButtonText={options.confirmButtonText}
       confirmButtonColor={options.confirmButtonColor}
       placeholder={options.placeholder}
+      showComments={options.showComments}
     />
   );
 

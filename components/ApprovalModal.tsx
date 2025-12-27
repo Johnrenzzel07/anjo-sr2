@@ -11,6 +11,7 @@ interface ApprovalModalProps {
   confirmButtonText?: string;
   confirmButtonColor?: 'green' | 'blue' | 'red' | 'purple';
   placeholder?: string;
+  showComments?: boolean; // Whether to show comments field
 }
 
 export default function ApprovalModal({
@@ -22,6 +23,7 @@ export default function ApprovalModal({
   confirmButtonText = 'Approve',
   confirmButtonColor = 'green',
   placeholder = 'Enter approval comments (optional)...',
+  showComments = true, // Default to showing comments for backward compatibility
 }: ApprovalModalProps) {
   const [comments, setComments] = useState('');
 
@@ -76,19 +78,21 @@ export default function ApprovalModal({
           <p className="text-sm text-gray-600 mb-4">{message}</p>
         )}
         
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Approval Comments:
-          </label>
-          <textarea
-            value={comments}
-            onChange={(e) => setComments(e.target.value)}
-            placeholder={placeholder}
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none"
-            autoFocus
-          />
-        </div>
+        {showComments && (
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              {confirmButtonColor === 'red' ? 'Rejection Reason:' : 'Comments:'}
+            </label>
+            <textarea
+              value={comments}
+              onChange={(e) => setComments(e.target.value)}
+              placeholder={placeholder}
+              rows={4}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-none"
+              autoFocus
+            />
+          </div>
+        )}
 
         <div className="flex justify-end gap-3">
           <button
