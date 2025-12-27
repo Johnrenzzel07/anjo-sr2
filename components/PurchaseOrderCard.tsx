@@ -6,14 +6,19 @@ import Link from 'next/link';
 
 interface PurchaseOrderCardProps {
   purchaseOrder: PurchaseOrder;
+  currentUser?: { role?: string; department?: string };
 }
 
-export default function PurchaseOrderCard({ purchaseOrder }: PurchaseOrderCardProps) {
+export default function PurchaseOrderCard({ purchaseOrder, currentUser }: PurchaseOrderCardProps) {
   const joNumber = typeof purchaseOrder.joId === 'object' 
     ? (purchaseOrder.joId as any)?.joNumber 
     : 'N/A';
 
-  // Check if Purchase Order needs approval
+  // Check if current user can approve
+  const isFinance = currentUser?.department === 'Finance' || currentUser?.role === 'FINANCE';
+  const isManagement = currentUser?.role === 'MANAGEMENT' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
+
+  // Check if Purchase Order needs approval (for visual highlight - show even if user can approve)
   const needsApproval = (() => {
     if (purchaseOrder.status === 'CLOSED' || purchaseOrder.status === 'REJECTED') return false;
     if (purchaseOrder.status === 'DRAFT') return false; // Draft doesn't need approval yet
@@ -29,6 +34,24 @@ export default function PurchaseOrderCard({ purchaseOrder }: PurchaseOrderCardPr
     return !financeApproved || !managementApproved;
   })();
 
+  // Check if current user needs to approve (for different highlight color)
+  const needsUserApproval = (() => {
+    if (purchaseOrder.status === 'CLOSED' || purchaseOrder.status === 'REJECTED' || purchaseOrder.status === 'DRAFT') return false;
+    
+    const financeApproved = purchaseOrder.approvals?.some((a: any) => 
+      a.role === 'FINANCE' && a.action === 'APPROVED'
+    );
+    const managementApproved = purchaseOrder.approvals?.some((a: any) => 
+      a.role === 'MANAGEMENT' && a.action === 'APPROVED'
+    );
+
+    // Finance needs to approve first
+    if (!financeApproved && isFinance) return true;
+    // Management needs to approve after Finance
+    if (!managementApproved && isManagement && financeApproved) return true;
+    return false;
+  })();
+
   const approvalMessage = (() => {
     if (purchaseOrder.status === 'CLOSED' || purchaseOrder.status === 'REJECTED' || purchaseOrder.status === 'DRAFT') return '';
     
@@ -39,13 +62,27 @@ export default function PurchaseOrderCard({ purchaseOrder }: PurchaseOrderCardPr
       a.role === 'MANAGEMENT' && a.action === 'APPROVED'
     );
 
-    if (!financeApproved) return 'Waiting for Finance approval';
-    if (!managementApproved) return 'Waiting for Management approval';
+    if (!financeApproved) {
+      // Don't show warning to Finance users - they can approve
+      if (isFinance) return '';
+      return 'Waiting for Finance approval';
+    }
+    if (!managementApproved) {
+      // Don't show warning to Management users - they can approve
+      if (isManagement) return '';
+      return 'Waiting for Management approval';
+    }
     return '';
   })();
 
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
+    <div className={`bg-white rounded-lg shadow-md p-6 border-2 transition-all ${
+      needsUserApproval
+        ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+        : needsApproval 
+        ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow' 
+        : 'border-gray-200 hover:shadow-lg'
+    }`}>
       <div className="flex justify-between items-start mb-4">
         <div>
           <Link href={`/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`}>
@@ -58,8 +95,8 @@ export default function PurchaseOrderCard({ purchaseOrder }: PurchaseOrderCardPr
         <StatusBadge status={purchaseOrder.status} type="po" />
       </div>
 
-      {/* Needs Approval Card */}
-      {needsApproval && (
+      {/* Needs Approval Card - Hide warning message for users who can approve, but show visual highlight */}
+      {needsApproval && approvalMessage && (
         <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-md">
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

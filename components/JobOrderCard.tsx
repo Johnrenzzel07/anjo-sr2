@@ -6,10 +6,16 @@ import Link from 'next/link';
 
 interface JobOrderCardProps {
   jobOrder: JobOrder;
+  currentUser?: { role?: string; department?: string };
 }
 
-export default function JobOrderCard({ jobOrder }: JobOrderCardProps) {
-  // Check if Job Order needs approval
+export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProps) {
+  // Check if current user can approve (hide warning message but show visual highlight)
+  const isFinance = currentUser?.department === 'Finance' || currentUser?.role === 'FINANCE';
+  const isOperations = currentUser?.department === 'Operations' || currentUser?.role === 'OPERATIONS';
+  const isManagement = currentUser?.role === 'MANAGEMENT' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
+
+  // Check if Job Order needs approval (for visual highlight - show even if user can approve)
   const needsApproval = (() => {
     if (jobOrder.status === 'CLOSED') return false;
     
@@ -33,8 +39,9 @@ export default function JobOrderCard({ jobOrder }: JobOrderCardProps) {
     }
   })();
 
-  const approvalMessage = (() => {
-    if (jobOrder.status === 'CLOSED') return '';
+  // Check if current user needs to approve (for different highlight color)
+  const needsUserApproval = (() => {
+    if (jobOrder.status === 'CLOSED') return false;
     
     const isServiceType = jobOrder.type === 'SERVICE';
     const operationsApproved = jobOrder.approvals?.some((a: any) => 
@@ -48,18 +55,68 @@ export default function JobOrderCard({ jobOrder }: JobOrderCardProps) {
     );
 
     if (isServiceType) {
-      if (!operationsApproved) return 'Waiting for Operations approval';
-      if (!managementApproved) return 'Waiting for Management approval';
+      // Service type: Operations first, then Management
+      if (!operationsApproved && isOperations) return true;
+      if (!managementApproved && isManagement && operationsApproved) return true;
     } else {
-      if (!financeApproved) return 'Waiting for Finance approval';
-      if (!managementApproved) return 'Waiting for Management approval';
+      // Material Requisition: Finance first, then Management
+      if (!financeApproved && isFinance) return true;
+      if (!managementApproved && isManagement && financeApproved) return true;
+    }
+    return false;
+  })();
+
+  const approvalMessage = (() => {
+    if (jobOrder.status === 'CLOSED') return '';
+    
+    const isServiceType = jobOrder.type === 'SERVICE';
+    const operationsApproved = jobOrder.approvals?.some((a: any) => 
+      a.role === 'OPERATIONS' && a.action === 'APPROVED'
+    );
+    const managementApproved = jobOrder.approvals?.some((a: any) => 
+      a.role === 'MANAGEMENT' && a.action === 'APPROVED'
+    );
+    // Check for Finance approval - Material Requisition uses BUDGET_APPROVED, but also check NOTED for compatibility
+    const financeApproved = jobOrder.approvals?.some((a: any) => 
+      a.role === 'FINANCE' && (a.action === 'NOTED' || a.action === 'BUDGET_APPROVED')
+    );
+
+    if (isServiceType) {
+      if (!operationsApproved) {
+        // Don't show warning to Operations users - they can approve
+        if (isOperations) return '';
+        return 'Waiting for Operations approval';
+      }
+      if (!managementApproved) {
+        // Don't show warning to Management users - they can approve
+        if (isManagement) return '';
+        return 'Waiting for Management approval';
+      }
+    } else {
+      // For Material Requisition: Finance needs to approve via Budget Panel
+      if (!financeApproved) {
+        // Don't show warning to Finance users - they can approve
+        if (isFinance) return '';
+        return 'Waiting for Finance approval';
+      }
+      if (!managementApproved) {
+        // Don't show warning to Management users - they can approve
+        if (isManagement) return '';
+        return 'Waiting for Management approval';
+      }
     }
     return '';
   })();
 
   return (
     <Link href={`/job-orders/${jobOrder.id || jobOrder._id}`}>
-      <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer">
+      <div className={`bg-white rounded-lg shadow-md p-4 sm:p-6 border-2 transition-all cursor-pointer ${
+        needsUserApproval
+          ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+          : needsApproval 
+          ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow' 
+          : 'border-gray-200 hover:shadow-lg'
+      }`}>
         <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-0 mb-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -81,8 +138,8 @@ export default function JobOrderCard({ jobOrder }: JobOrderCardProps) {
           <StatusBadge status={jobOrder.status} type="jo" />
         </div>
 
-        {/* Needs Approval Card */}
-        {needsApproval && (
+        {/* Needs Approval Card - Hide warning message for users who can approve, but keep visual highlight */}
+        {needsApproval && approvalMessage && (
           <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-md">
             <div className="flex items-center gap-2">
               <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -109,8 +109,19 @@ export default function ServiceRequestCard({
     }
   };
 
+  // Show visual highlight if approval is needed (even for users who can approve)
+  const needsApprovalHighlight = serviceRequest.status === 'SUBMITTED' && !departmentHeadApproved;
+  // Check if current user needs to approve (for different highlight color)
+  const needsUserApproval = needsApprovalHighlight && isDepartmentHead;
+
   return (
-    <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
+    <div className={`bg-white rounded-lg shadow-md p-6 border-2 transition-all ${
+      needsUserApproval
+        ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+        : needsApprovalHighlight 
+        ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow' 
+        : 'border-gray-200 hover:shadow-lg'
+    }`}>
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">{serviceRequest.srNumber}</h3>
@@ -135,8 +146,8 @@ export default function ServiceRequestCard({
         <p className="text-sm text-gray-600 line-clamp-2">{serviceRequest.workDescription}</p>
       </div>
 
-      {/* Needs Approval Card */}
-      {serviceRequest.status === 'SUBMITTED' && !departmentHeadApproved && (
+      {/* Needs Approval Card - Hide warning message for Department Head who can approve, but show visual highlight */}
+      {serviceRequest.status === 'SUBMITTED' && !departmentHeadApproved && !isDepartmentHead && (
         <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-md">
           <div className="flex items-center gap-2">
             <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">

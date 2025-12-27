@@ -896,7 +896,7 @@ export default function AdminDashboard() {
               return filteredJOs.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {filteredJOs.map((jo) => (
-                    <JobOrderCard key={jo.id || jo._id} jobOrder={jo} />
+                    <JobOrderCard key={jo.id || jo._id} jobOrder={jo} currentUser={user} />
                   ))}
                 </div>
               ) : (
@@ -938,7 +938,7 @@ export default function AdminDashboard() {
               return filteredPOs.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                   {filteredPOs.map((po) => (
-                    <PurchaseOrderCard key={po.id || po._id} purchaseOrder={po} />
+                    <PurchaseOrderCard key={po.id || po._id} purchaseOrder={po} currentUser={user} />
                   ))}
                 </div>
               ) : (
