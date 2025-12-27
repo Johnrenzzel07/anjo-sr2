@@ -27,7 +27,18 @@ export default function AdminDashboard() {
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'sr' | 'jo' | 'po' | 'approvals'>('sr');
+  
+  // Get initial tab from URL query parameter, default to 'sr'
+  const [activeTab, setActiveTab] = useState<'sr' | 'jo' | 'po' | 'approvals'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab === 'sr' || tab === 'jo' || tab === 'po' || tab === 'approvals') {
+        return tab;
+      }
+    }
+    return 'sr';
+  });
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterJOStatus, setFilterJOStatus] = useState<string>('all');
   const [filterPOStatus, setFilterPOStatus] = useState<string>('all');
@@ -113,6 +124,15 @@ export default function AdminDashboard() {
       fetchData(true);
     }
   }, [searchQuery, activeTab]);
+
+  // Update URL when tab changes (without page reload)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', activeTab);
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, [activeTab]);
 
   // Reset when tab changes
   useEffect(() => {

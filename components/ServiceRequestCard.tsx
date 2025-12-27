@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { ServiceRequest, UserRole } from '@/types';
 import StatusBadge from './StatusBadge';
 import Link from 'next/link';
-import ConfirmationModal from './ConfirmationModal';
 import { useToast } from './ToastContainer';
 
 interface ServiceRequestCardProps {
@@ -24,8 +23,6 @@ export default function ServiceRequestCard({
 }: ServiceRequestCardProps) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [pendingAction, setPendingAction] = useState<'APPROVED' | 'REJECTED' | null>(null);
 
   const departmentHeadApproved = serviceRequest.approvals?.some(
     (a: any) => a.role === 'DEPARTMENT_HEAD' && a.action === 'APPROVED'
@@ -48,32 +45,19 @@ export default function ServiceRequestCard({
     serviceRequest.status === 'SUBMITTED' &&
     !departmentHeadApproved;
 
-  const handleApproveClick = (action: 'APPROVED' | 'REJECTED') => {
+  const handleApproveClick = async (e: React.MouseEvent, action: 'APPROVED' | 'REJECTED') => {
+    e.stopPropagation(); // Prevent card click navigation
     if (!currentUser) return;
     
-    if (action === 'APPROVED') {
-      // Show confirmation modal for approval
-      setPendingAction(action);
-      setShowConfirmModal(true);
-    } else {
-      // For rejection, still use prompt for comments
+    // For rejection, use prompt for comments
+    let comments = '';
+    if (action === 'REJECTED') {
       const commentsInput = prompt(`Enter comments for ${action.toLowerCase()}:`);
       if (commentsInput === null) return; // User cancelled
-      handleApprove(action, commentsInput);
+      comments = commentsInput;
     }
-  };
-
-  const handleConfirmApprove = () => {
-    setShowConfirmModal(false);
-    if (pendingAction === 'APPROVED') {
-      handleApprove('APPROVED', '');
-    }
-    setPendingAction(null);
-  };
-
-  const handleCancelApprove = () => {
-    setShowConfirmModal(false);
-    setPendingAction(null);
+    
+    await handleApprove(action, comments);
   };
 
   const handleApprove = async (action: 'APPROVED' | 'REJECTED', comments: string = '') => {
@@ -115,13 +99,14 @@ export default function ServiceRequestCard({
   const needsUserApproval = needsApprovalHighlight && isDepartmentHead;
 
   return (
-    <div className={`bg-white rounded-lg shadow-md p-6 border-2 transition-all ${
-      needsUserApproval
-        ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
-        : needsApprovalHighlight 
-        ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow' 
-        : 'border-gray-200 hover:shadow-lg'
-    }`}>
+    <Link href={`/service-requests/${serviceRequest.id || serviceRequest._id}`}>
+      <div className={`bg-white rounded-lg shadow-md p-6 border-2 transition-all cursor-pointer ${
+        needsUserApproval
+          ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+          : needsApprovalHighlight 
+          ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow' 
+          : 'border-gray-200 hover:shadow-lg'
+      }`}>
       <div className="flex justify-between items-start mb-4">
         <div>
           <h3 className="text-lg font-semibold text-gray-900">{serviceRequest.srNumber}</h3>
@@ -175,16 +160,16 @@ export default function ServiceRequestCard({
 
       {/* Approval Buttons */}
       {canApprove && (
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4" onClick={(e) => e.stopPropagation()}>
           <button
-            onClick={() => handleApproveClick('APPROVED')}
+            onClick={(e) => handleApproveClick(e, 'APPROVED')}
             disabled={loading}
             className="flex-1 bg-green-600 text-white px-3 py-2 rounded-md hover:bg-green-700 transition-colors text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
             {loading ? 'Processing...' : 'Approve'}
           </button>
           <button
-            onClick={() => handleApproveClick('REJECTED')}
+            onClick={(e) => handleApproveClick(e, 'REJECTED')}
             disabled={loading}
             className="flex-1 bg-red-600 text-white px-3 py-2 rounded-md hover:bg-red-700 transition-colors text-sm font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
@@ -193,28 +178,20 @@ export default function ServiceRequestCard({
         </div>
       )}
 
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showConfirmModal}
-        title="Confirm Approval"
-        message="Are you sure to approve this service request?"
-        confirmText="Approve"
-        cancelText="Cancel"
-        onConfirm={handleConfirmApprove}
-        onCancel={handleCancelApprove}
-        confirmButtonColor="green"
-      />
-
       {/* Show Create Job Order button if status is APPROVED */}
       {/* If status is APPROVED, we allow creation even without explicit approval record (backward compatibility) */}
       {showCreateJO && serviceRequest.status === 'APPROVED' && (
         <button
-          onClick={() => onCreateJO?.(serviceRequest.id || serviceRequest._id || '')}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCreateJO?.(serviceRequest.id || serviceRequest._id || '');
+          }}
           className="w-full mt-4 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
         >
           Create Job Order
         </button>
       )}
-    </div>
+      </div>
+    </Link>
   );
 }
