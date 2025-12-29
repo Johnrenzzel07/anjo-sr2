@@ -253,9 +253,11 @@ export default function Home() {
               <h2 className="text-2xl font-semibold text-gray-900">Job Orders</h2>
             </div>
             {jobOrders.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="columns-1 md:columns-2 lg:columns-3 gap-6">
                 {jobOrders.map((jo) => (
-                  <JobOrderCard key={jo.id} jobOrder={jo} />
+                  <div key={jo.id} className="break-inside-avoid mb-6">
+                    <JobOrderCard jobOrder={jo} />
+                  </div>
                 ))}
               </div>
             ) : (
@@ -273,7 +275,7 @@ export default function Home() {
               <h2 className="text-2xl font-semibold text-gray-900">Approved Service Requests</h2>
             </div>
             {serviceRequests.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="columns-1 md:columns-2 lg:columns-3 gap-6">
                 {serviceRequests.map((sr) => {
                   const srId = sr.id || sr._id || '';
                   const srIdString = srId.toString();
@@ -305,22 +307,13 @@ export default function Home() {
                   const canCreateJO = sr.status === 'APPROVED' && !hasJO;
                   
                   return (
-                    <div key={srId}>
+                    <div key={srId} className="break-inside-avoid mb-6">
                       <ServiceRequestCard
                         serviceRequest={sr}
                         showCreateJO={canCreateJO}
                         onCreateJO={handleCreateJO}
+                        hasJobOrder={hasJO}
                       />
-                      {hasJO && (
-                        <div className="mt-2 text-sm text-gray-500 text-center">
-                          Job Order already created
-                        </div>
-                      )}
-                      {sr.status !== 'APPROVED' && (
-                        <div className="mt-2 text-sm text-yellow-600 text-center">
-                          Status: {sr.status} - Must be APPROVED to create Job Order
-                        </div>
-                      )}
                     </div>
                   );
                 })}

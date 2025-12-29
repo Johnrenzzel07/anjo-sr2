@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import JobOrder from '@/lib/models/JobOrder';
 import { UpdateJobOrderInput } from '@/types';
+import { notifyJobOrderServiceAccepted } from '@/lib/utils/notifications';
 
 export async function GET(
   request: Request,
@@ -18,6 +19,18 @@ export async function GET(
         { error: 'Job order not found' },
         { status: 404 }
       );
+    }
+    
+    // Auto-fix status for existing JOs: If SERVICE type has President approval but status is DRAFT, update to APPROVED
+    if (jobOrder.type === 'SERVICE' && jobOrder.status === 'DRAFT' && jobOrder.status !== 'CLOSED') {
+      const presidentApproved = jobOrder.approvals?.some((a: any) => 
+        a.role === 'MANAGEMENT' && a.action === 'APPROVED'
+      );
+      
+      if (presidentApproved) {
+        jobOrder.status = 'APPROVED';
+        await jobOrder.save();
+      }
     }
     
     return NextResponse.json({ jobOrder });
@@ -58,6 +71,17 @@ export async function PATCH(
     if (body.budget !== undefined) {
       updateData.budget = { ...body.budget };
     }
+    // Get the original job order to check if acceptance is new
+    const originalJobOrder = await JobOrder.findById(id);
+    if (!originalJobOrder) {
+      return NextResponse.json(
+        { error: 'Job order not found' },
+        { status: 404 }
+      );
+    }
+
+    const wasAlreadyAccepted = !!originalJobOrder.acceptance?.serviceAcceptedBy;
+    
     if (body.acceptance !== undefined) {
       updateData.acceptance = { ...body.acceptance };
     }
@@ -72,6 +96,16 @@ export async function PATCH(
       return NextResponse.json(
         { error: 'Job order not found' },
         { status: 404 }
+      );
+    }
+    
+    // Notify handling department when service is accepted (if it's a new acceptance)
+    if (body.acceptance?.serviceAcceptedBy && !wasAlreadyAccepted && jobOrder.serviceCategory) {
+      await notifyJobOrderServiceAccepted(
+        jobOrder._id.toString(),
+        jobOrder.joNumber,
+        jobOrder.serviceCategory,
+        body.acceptance.serviceAcceptedBy
       );
     }
     

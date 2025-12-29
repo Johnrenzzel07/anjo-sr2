@@ -18,6 +18,8 @@ const APPROVERS: Array<{
   { name: 'Nelson Judaya', email: 'nelson.judaya@anjoworld.com', department: 'Marketing', role: 'APPROVER' },
   { name: 'Luchie Catalan', email: 'luchie.catalan@anjoworld.com', department: 'Belmont One', role: 'APPROVER' },
   { name: 'Purchasing Manager', email: 'purchasing@anjoworld.com', department: 'Purchasing', role: 'APPROVER' },
+  { name: 'Accounting Head', email: 'accounting.head@anjoworld.com', department: 'Accounting', role: 'APPROVER' },
+  { name: 'General Services Head', email: 'general.services@anjoworld.com', department: 'General Services', role: 'APPROVER' },
   { name: 'Chester Lim', email: 'clim@anjoworld.com', department: 'President', role: 'SUPER_ADMIN' },
 ];
 
@@ -36,17 +38,20 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const defaultPassword = 'Password123!'; // Change this in production
     const hashedPassword = await hashPassword(defaultPassword);
-    const chesterPassword = 'anjo123'; // Special password for Chester Lim
-    const chesterHashedPassword = await hashPassword(chesterPassword);
+    const specialPassword = 'anjo123'; // Special password for Chester Lim, Accounting Head, and General Services Head
+    const specialHashedPassword = await hashPassword(specialPassword);
 
     const results = [];
 
     for (const approver of APPROVERS) {
       const existingUser = await User.findOne({ email: approver.email.toLowerCase() });
       
-      // Use special password for Chester Lim, default for others
+      // Use special password for Chester Lim, Accounting Head, and General Services Head
       const isChester = approver.email.toLowerCase() === 'clim@anjoworld.com';
-      const passwordToUse = isChester ? chesterHashedPassword : hashedPassword;
+      const isAccountingHead = approver.email.toLowerCase() === 'accounting.head@anjoworld.com';
+      const isGeneralServicesHead = approver.email.toLowerCase() === 'general.services@anjoworld.com';
+      const useSpecialPassword = isChester || isAccountingHead || isGeneralServicesHead;
+      const passwordToUse = useSpecialPassword ? specialHashedPassword : hashedPassword;
       
       if (existingUser) {
         // Update existing user
@@ -59,7 +64,7 @@ export async function POST(request: NextRequest) {
         results.push({ 
           email: approver.email, 
           action: 'updated',
-          password: isChester ? chesterPassword : defaultPassword
+          password: useSpecialPassword ? specialPassword : defaultPassword
         });
       } else {
         // Create new user
@@ -75,7 +80,7 @@ export async function POST(request: NextRequest) {
         results.push({ 
           email: approver.email, 
           action: 'created',
-          password: isChester ? chesterPassword : defaultPassword
+          password: useSpecialPassword ? specialPassword : defaultPassword
         });
       }
     }

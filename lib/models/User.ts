@@ -10,8 +10,10 @@ export type Department =
   | 'HR' 
   | 'Sales' 
   | 'Finance' 
+  | 'Accounting'
   | 'Marketing' 
   | 'Purchasing'
+  | 'General Services'
   | 'President'
   | 'Other';
 
@@ -52,7 +54,7 @@ const UserSchema = new Schema<IUser>({
   },
   department: {
     type: String,
-    enum: ['Maintenance', 'IT Department', 'IT', 'Belmont One', 'Operations', 'HR', 'Sales', 'Finance', 'Marketing', 'Purchasing', 'President', 'Other'],
+    enum: ['Maintenance', 'IT Department', 'IT', 'Belmont One', 'Operations', 'HR', 'Sales', 'Finance', 'Accounting', 'Marketing', 'Purchasing', 'General Services', 'President', 'Other'],
     required: true,
   },
   isActive: {

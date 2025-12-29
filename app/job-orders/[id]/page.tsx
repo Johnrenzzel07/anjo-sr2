@@ -238,12 +238,35 @@ export default function JobOrderPage() {
         {(() => {
           const userRole = currentUser?.role as string;
           const userDepartment = (currentUser as any)?.department;
+          
+          // Helper to normalize department
+          const normalizeDept = (dept: string | undefined) => (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
+          
+          // Service Category to Department mapping
+          const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
+            'Technical Support': ['it'],
+            'Facility Maintenance': ['maintenance'],
+            'Account/Billing Inquiry': ['finance'],
+            'General Inquiry': ['operations'],
+            'Other': ['operations'],
+          };
+          
+          // Check if user is the handling department for this JO
+          const isHandlingDept = (() => {
+            const normalizedUserDept = normalizeDept(userDepartment);
+            if (normalizedUserDept === 'president') return true;
+            const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[jobOrder.serviceCategory];
+            if (!authorizedDepts) return normalizedUserDept === 'operations';
+            return authorizedDepts.includes(normalizedUserDept);
+          })();
+          
           const isAuthorized = userRole === 'OPERATIONS' || 
                               userRole === 'ADMIN' || 
                               userRole === 'SUPER_ADMIN' ||
                               userRole === 'FINANCE' ||
                               userRole === 'DEPARTMENT_HEAD' ||
-                              (userRole === 'APPROVER' && (userDepartment === 'Operations' || userDepartment === 'Finance'));
+                              isHandlingDept ||
+                              (userRole === 'APPROVER' && (normalizeDept(userDepartment) === 'operations' || normalizeDept(userDepartment) === 'finance'));
           
           if (!isAuthorized && currentUser) {
             return (

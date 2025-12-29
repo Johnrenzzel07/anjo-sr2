@@ -361,9 +361,10 @@ export default function RequesterDashboard() {
             
             return filteredSRs.length > 0 ? (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
                   {filteredSRs.map((sr) => (
-                <Link key={sr.id || sr._id} href={`/service-requests/${sr.id || sr._id}`}>
+                <div key={sr.id || sr._id} className="break-inside-avoid mb-4 sm:mb-6">
+                <Link href={`/service-requests/${sr.id || sr._id}`}>
                   <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer">
                     <div className="flex justify-between items-start mb-4">
                       <div>
@@ -462,6 +463,7 @@ export default function RequesterDashboard() {
                     </div>
                   </div>
                 </Link>
+                </div>
                   ))}
                 </div>
                 {/* Loading indicator for infinite scroll */}

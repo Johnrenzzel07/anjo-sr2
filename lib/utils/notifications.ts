@@ -1,6 +1,7 @@
 import connectDB from '@/lib/mongodb';
 import Notification, { NotificationType } from '@/lib/models/Notification';
 import User from '@/lib/models/User';
+import { getAuthorizedDepartments } from '@/lib/utils/joAuthorization';
 
 interface CreateNotificationParams {
   userId: string;
@@ -119,34 +120,85 @@ export async function findUserByEmail(email: string): Promise<string | null> {
 
 /**
  * Notify Department Head when Service Request is submitted
+ * Notifies the REQUESTER'S department head for approval
  */
 export async function notifyServiceRequestSubmitted(
   serviceRequestId: string,
   srNumber: string,
   requestedBy: string,
-  department: string
+  requesterDepartment: string,
+  serviceCategory?: string
 ) {
   try {
-    // Find Department Head users (APPROVER role with matching department or SUPER_ADMIN)
-    const deptHeadIds = await findUsersByRole('APPROVER', department);
+    // Notify the REQUESTER'S department head for SR approval
+    const deptHeadIds = await findUsersByRole('APPROVER', requesterDepartment);
+    
+    // Always include super admins
     const superAdminIds = await findUsersByRole('SUPER_ADMIN');
     const allUserIds = [...new Set([...deptHeadIds, ...superAdminIds])];
 
     if (allUserIds.length === 0) {
-      console.warn(`No approvers found for department: ${department}`);
+      console.warn(`No approvers found for department: ${requesterDepartment}`);
       return;
     }
 
+    const categoryText = serviceCategory ? ` (${serviceCategory})` : '';
     await createNotificationsForUsers(allUserIds, {
       type: 'SERVICE_REQUEST_SUBMITTED',
       title: `New Service Request: ${srNumber}`,
-      message: `${requestedBy} from ${department} has submitted a new service request that requires your approval.`,
+      message: `${requestedBy} has submitted a new service request${categoryText} that requires your approval.`,
       link: `/service-requests/${serviceRequestId}`,
       relatedEntityType: 'SERVICE_REQUEST',
       relatedEntityId: serviceRequestId,
     });
   } catch (error) {
     console.error('Error notifying service request submitted:', error);
+  }
+}
+
+/**
+ * Notify the HANDLING department when Service Request is approved
+ * The handling department (based on service category) will create the Job Order
+ */
+export async function notifyHandlingDepartmentForJO(
+  serviceRequestId: string,
+  srNumber: string,
+  serviceCategory: string,
+  requesterDepartment: string
+) {
+  try {
+    const handlingDepts = getAuthorizedDepartments(serviceCategory);
+    let allUserIds: string[] = [];
+    
+    for (const dept of handlingDepts) {
+      const deptHeadIds = await findUsersByRole('APPROVER', dept);
+      allUserIds.push(...deptHeadIds);
+      
+      // Also try with "Department" suffix
+      const deptWithSuffix = `${dept} Department`;
+      const deptHeadIdsWithSuffix = await findUsersByRole('APPROVER', deptWithSuffix);
+      allUserIds.push(...deptHeadIdsWithSuffix);
+    }
+    
+    // Always include super admins
+    const superAdminIds = await findUsersByRole('SUPER_ADMIN');
+    allUserIds = [...new Set([...allUserIds, ...superAdminIds])];
+
+    if (allUserIds.length === 0) {
+      console.warn(`No handling department found for service category: ${serviceCategory}`);
+      return;
+    }
+
+    await createNotificationsForUsers(allUserIds, {
+      type: 'SERVICE_REQUEST_APPROVED',
+      title: `Service Request Approved: ${srNumber}`,
+      message: `A service request for "${serviceCategory}" from ${requesterDepartment} has been approved. Please create a Job Order.`,
+      link: `/service-requests/${serviceRequestId}`,
+      relatedEntityType: 'SERVICE_REQUEST',
+      relatedEntityId: serviceRequestId,
+    });
+  } catch (error) {
+    console.error('Error notifying handling department for JO:', error);
   }
 }
 
@@ -220,9 +272,18 @@ export async function notifyServiceRequestApprovedForJO(
 export async function notifyJobOrderCreated(
   jobOrderId: string,
   joNumber: string,
-  type: 'SERVICE' | 'MATERIAL_REQUISITION'
+  type: 'SERVICE' | 'MATERIAL_REQUISITION',
+  creatorName?: string,
+  creatorDepartment?: string
 ) {
   try {
+    // Format creator information
+    const creatorInfo = creatorName && creatorDepartment 
+      ? ` by ${creatorName} (${creatorDepartment})`
+      : creatorName 
+      ? ` by ${creatorName}`
+      : '';
+    
     // For Service type: Notify Operations to approve
     // For Material Requisition: Notify Finance and Management
     if (type === 'SERVICE') {
@@ -234,7 +295,7 @@ export async function notifyJobOrderCreated(
         await createNotificationsForUsers(allUserIds, {
           type: 'JOB_ORDER_NEEDS_APPROVAL',
           title: `New Job Order Created: ${joNumber}`,
-          message: `A new Service Job Order ${joNumber} has been created and requires your approval.`,
+          message: `A new Service Job Order ${joNumber} has been created${creatorInfo} and requires your approval.`,
           link: `/job-orders/${jobOrderId}`,
           relatedEntityType: 'JOB_ORDER',
           relatedEntityId: jobOrderId,
@@ -250,7 +311,7 @@ export async function notifyJobOrderCreated(
         await createNotificationsForUsers(allUserIds, {
           type: 'JOB_ORDER_NEEDS_APPROVAL',
           title: `New Material Requisition: ${joNumber}`,
-          message: `A new Material Requisition ${joNumber} has been created and requires budget approval.`,
+          message: `A new Material Requisition ${joNumber} has been created${creatorInfo} and requires budget approval.`,
           link: `/job-orders/${jobOrderId}`,
           relatedEntityType: 'JOB_ORDER',
           relatedEntityId: jobOrderId,
@@ -259,6 +320,60 @@ export async function notifyJobOrderCreated(
     }
   } catch (error) {
     console.error('Error notifying job order created:', error);
+  }
+}
+
+/**
+ * Notify handling department when Job Order is approved and ready for execution
+ */
+export async function notifyHandlingDepartmentReadyForExecution(
+  jobOrderId: string,
+  joNumber: string,
+  serviceCategory: string,
+  approverName?: string,
+  approverRole?: string
+) {
+  try {
+    const { getAuthorizedDepartments } = await import('@/lib/utils/joAuthorization');
+    const handlingDepts = getAuthorizedDepartments(serviceCategory);
+    let allUserIds: string[] = [];
+    
+    for (const dept of handlingDepts) {
+      const deptHeadIds = await findUsersByRole('APPROVER', dept);
+      allUserIds.push(...deptHeadIds);
+      
+      // Also try with "Department" suffix
+      const deptWithSuffix = `${dept} Department`;
+      const deptHeadIdsWithSuffix = await findUsersByRole('APPROVER', deptWithSuffix);
+      allUserIds.push(...deptHeadIdsWithSuffix);
+    }
+    
+    // Always include super admins
+    const superAdminIds = await findUsersByRole('SUPER_ADMIN');
+    allUserIds = [...new Set([...allUserIds, ...superAdminIds])];
+
+    if (allUserIds.length > 0) {
+      // Format approver text with role
+      let approverText = '';
+      if (approverName) {
+        if (approverRole === 'MANAGEMENT' || approverRole === 'ADMIN' || approverRole === 'SUPER_ADMIN') {
+          approverText = ` by President (${approverName})`;
+        } else {
+          approverText = ` by ${approverName}`;
+        }
+      }
+      
+      await createNotificationsForUsers(allUserIds, {
+        type: 'JOB_ORDER_NEEDS_APPROVAL',
+        title: `Job Order Approved: ${joNumber}`,
+        message: `Job Order ${joNumber} has been approved${approverText}. You can now start execution.`,
+        link: `/job-orders/${jobOrderId}`,
+        relatedEntityType: 'JOB_ORDER',
+        relatedEntityId: jobOrderId,
+      });
+    }
+  } catch (error) {
+    console.error('Error notifying handling department ready for execution:', error);
   }
 }
 
@@ -365,6 +480,94 @@ export async function notifyJobOrderStatusChanged(
     });
   } catch (error) {
     console.error('Error notifying job order status change:', error);
+  }
+}
+
+/**
+ * Notify requester's department head when Job Order execution is completed
+ */
+export async function notifyJobOrderExecutionCompleted(
+  jobOrderId: string,
+  joNumber: string,
+  requesterDepartment: string
+) {
+  try {
+    // Notify the REQUESTER'S department head (the department that originally requested the SR)
+    const deptHeadIds = await findUsersByRole('APPROVER', requesterDepartment);
+    
+    // Also try with "Department" suffix
+    const deptWithSuffix = `${requesterDepartment} Department`;
+    const deptHeadIdsWithSuffix = await findUsersByRole('APPROVER', deptWithSuffix);
+    
+    // Always include super admins
+    const superAdminIds = await findUsersByRole('SUPER_ADMIN');
+    const allUserIds = [...new Set([...deptHeadIds, ...deptHeadIdsWithSuffix, ...superAdminIds])];
+
+    if (allUserIds.length === 0) {
+      console.warn(`No department head found for department: ${requesterDepartment}`);
+      return;
+    }
+
+    await createNotificationsForUsers(allUserIds, {
+      type: 'JOB_ORDER_STATUS_CHANGED',
+      title: `Job Order Completed: ${joNumber}`,
+      message: `Job Order ${joNumber} has been executed and completed. Please review and accept the service.`,
+      link: `/job-orders/${jobOrderId}`,
+      relatedEntityType: 'JOB_ORDER',
+      relatedEntityId: jobOrderId,
+    });
+  } catch (error) {
+    console.error('Error notifying job order execution completed:', error);
+  }
+}
+
+/**
+ * Notify handling department when Job Order service is accepted by requester's department head
+ */
+export async function notifyJobOrderServiceAccepted(
+  jobOrderId: string,
+  joNumber: string,
+  serviceCategory: string,
+  acceptedBy: string
+) {
+  try {
+    const { getAuthorizedDepartments } = await import('@/lib/utils/joAuthorization');
+    const handlingDepts = getAuthorizedDepartments(serviceCategory);
+    let allUserIds: string[] = [];
+    
+    for (const dept of handlingDepts) {
+      // Normalize department name
+      const normalizedDept = dept.toLowerCase().replace(/\s+department$/, '').trim();
+      
+      const deptHeadIds = await findUsersByRole('APPROVER', dept);
+      allUserIds.push(...deptHeadIds);
+      
+      // Also try with normalized name
+      const deptHeadIdsNormalized = await findUsersByRole('APPROVER', normalizedDept);
+      allUserIds.push(...deptHeadIdsNormalized);
+      
+      // Also try with "Department" suffix
+      const deptWithSuffix = `${normalizedDept} Department`;
+      const deptHeadIdsWithSuffix = await findUsersByRole('APPROVER', deptWithSuffix);
+      allUserIds.push(...deptHeadIdsWithSuffix);
+    }
+    
+    // Always include super admins
+    const superAdminIds = await findUsersByRole('SUPER_ADMIN');
+    allUserIds = [...new Set([...allUserIds, ...superAdminIds])];
+
+    if (allUserIds.length > 0) {
+      await createNotificationsForUsers(allUserIds, {
+        type: 'JOB_ORDER_STATUS_CHANGED',
+        title: `Service Accepted: ${joNumber}`,
+        message: `Job Order ${joNumber} has been accepted by ${acceptedBy}. The service has been formally accepted and the Job Order is now closed.`,
+        link: `/job-orders/${jobOrderId}`,
+        relatedEntityType: 'JOB_ORDER',
+        relatedEntityId: jobOrderId,
+      });
+    }
+  } catch (error) {
+    console.error('Error notifying job order service accepted:', error);
   }
 }
 

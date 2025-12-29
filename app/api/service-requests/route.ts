@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import ServiceRequest from '@/lib/models/ServiceRequest';
 import { getAuthUser } from '@/lib/auth';
+import { getServiceCategoriesForDepartment } from '@/lib/utils/joAuthorization';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '9', 10);
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const status = searchParams.get('status'); // Optional status filter
-    const department = searchParams.get('department'); // Optional department filter
+    const department = searchParams.get('department'); // Optional department filter (for filtering by service category)
     
     // Get current user if authenticated
     const authUser = getAuthUser(request);
@@ -38,14 +39,37 @@ export async function GET(request: NextRequest) {
       query.status = status;
     }
     
-    // Apply department filter if provided (for APPROVER role)
+    // For APPROVER role, show:
+    // 1. SUBMITTED SRs from their own department (for approval)
+    // 2. APPROVED SRs that match their handling service category (for JO creation)
     if (department) {
-      // Normalize department name for matching
       const normalizeDept = (dept: string) => dept.toLowerCase().replace(/\s+department$/, '').trim();
       const deptNorm = normalizeDept(department);
+      const serviceCategories = getServiceCategoriesForDepartment(department);
       
-      // Use regex to match department (case-insensitive, handles "IT" vs "IT Department")
-      query.department = { $regex: new RegExp(`^${deptNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') };
+      // Build OR query: own department's SRs OR approved SRs they can create JO for
+      const deptConditions: any[] = [];
+      
+      // Condition 1: SRs from their own department (for approval)
+      deptConditions.push({
+        department: { $regex: new RegExp(`^${deptNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') }
+      });
+      
+      // Condition 2: APPROVED SRs with service categories they handle (for JO creation)
+      if (serviceCategories.length > 0) {
+        deptConditions.push({
+          status: 'APPROVED',
+          serviceCategory: { $in: serviceCategories }
+        });
+      }
+      
+      // Combine with $or
+      if (query.$or) {
+        // If there's already an $or (from REQUESTER filter), use $and
+        query = { $and: [query, { $or: deptConditions }] };
+      } else {
+        query.$or = deptConditions;
+      }
     }
     
     // Use aggregation to sort by status priority (SUBMITTED first), then by createdAt
@@ -119,13 +143,14 @@ export async function POST(request: Request) {
 
     await serviceRequest.save();
     
-    // Notify Department Head about new Service Request
+    // Notify the HANDLING Department Head about new Service Request (based on service category)
     const { notifyServiceRequestSubmitted } = await import('@/lib/utils/notifications');
     await notifyServiceRequestSubmitted(
       serviceRequest._id.toString(),
       serviceRequest.srNumber,
       serviceRequest.requestedBy,
-      serviceRequest.department
+      serviceRequest.department,
+      serviceRequest.serviceCategory // Pass service category to notify the correct handling department
     );
     
     return NextResponse.json({ serviceRequest }, { status: 201 });

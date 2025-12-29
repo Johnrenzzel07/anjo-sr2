@@ -104,3 +104,9 @@
   z-index: -1;
   animation: pulse-glow 2s ease-in-out infinite;
 }
+
+/* Masonry layout support */
+.break-inside-avoid {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}

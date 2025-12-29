@@ -4,6 +4,7 @@ import ServiceRequest from '@/lib/models/ServiceRequest';
 import JobOrder from '@/lib/models/JobOrder';
 import { CreateJobOrderInput } from '@/types';
 import { getAuthUser } from '@/lib/auth';
+import { getServiceCategoriesForDepartment } from '@/lib/utils/joAuthorization';
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,10 +39,29 @@ export async function GET(request: NextRequest) {
     
     if (departmentFilter) {
       const userDeptNorm = normalizeDept(departmentFilter);
-      // Special cases: Operations, Finance, and Purchasing should see ALL Job Orders
-      if (userDeptNorm !== 'operations' && userDeptNorm !== 'finance' && userDeptNorm !== 'purchasing') {
-        // Use regex to match department (case-insensitive, handles "IT" vs "IT Department")
-        query.department = { $regex: new RegExp(`^${userDeptNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') };
+      // Special cases: Operations, Finance, Purchasing, and President should see ALL Job Orders
+      if (userDeptNorm !== 'operations' && userDeptNorm !== 'finance' && userDeptNorm !== 'purchasing' && userDeptNorm !== 'president') {
+        // Show JOs where EITHER:
+        // 1. Service category matches what this department handles (handling department view)
+        // 2. OR requester's department matches user's department (requester's department head view)
+        const serviceCategories = getServiceCategoriesForDepartment(departmentFilter);
+        
+        const conditions: any[] = [];
+        
+        // Condition 1: Service category matches what this department handles
+        if (serviceCategories.length > 0) {
+          conditions.push({ serviceCategory: { $in: serviceCategories } });
+        }
+        
+        // Condition 2: Requester's department matches user's department
+        conditions.push({
+          department: { $regex: new RegExp(`^${userDeptNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') }
+        });
+        
+        // Combine with $or
+        if (conditions.length > 0) {
+          query.$or = conditions;
+        }
       }
     }
     
@@ -185,11 +205,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body: { srId: string; input?: CreateJobOrderInput } = await request.json();
     const { srId, input = {} as CreateJobOrderInput } = body;
+    
+    // Get current user who is creating the Job Order
+    const authUser = getAuthUser(request);
     
     // Ensure type is provided, default to SERVICE if not
     const jobOrderType = input.type || 'SERVICE';
@@ -342,7 +365,9 @@ export async function POST(request: Request) {
     await notifyJobOrderCreated(
       jobOrder._id.toString(),
       jobOrder.joNumber,
-      jobOrderType as 'SERVICE' | 'MATERIAL_REQUISITION'
+      jobOrderType as 'SERVICE' | 'MATERIAL_REQUISITION',
+      authUser?.name || 'Unknown User',
+      authUser?.department || 'Unknown Department'
     );
     
     return NextResponse.json({ jobOrder }, { status: 201 });

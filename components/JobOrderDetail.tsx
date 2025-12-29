@@ -4,6 +4,47 @@ import { JobOrder, UserRole, ApprovalAction } from '@/types';
 import StatusBadge from './StatusBadge';
 import BudgetPanel from '@/components/BudgetPanel';
 
+// Service Category to Department mapping for JO approval
+const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
+  'Technical Support': ['it'],
+  'Facility Maintenance': ['maintenance'],
+  'Account/Billing Inquiry': ['accounting'],
+  'General Inquiry': ['general services'],
+  'Other': ['operations'],
+};
+
+// Normalize department name for comparison
+function normalizeDept(dept: string | undefined): string {
+  return (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
+}
+
+// Check if user is the handling department for this service category
+function isHandlingDepartment(userDepartment: string | undefined, serviceCategory: string): boolean {
+  const normalizedUserDept = normalizeDept(userDepartment);
+  
+  // President can handle all
+  if (normalizedUserDept === 'president') {
+    return true;
+  }
+  
+  // Operations can also handle if they're in the authorized list
+  const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
+  if (!authorizedDepts) {
+    // Default to operations for unknown categories
+    return normalizedUserDept === 'operations';
+  }
+  
+  return authorizedDepts.includes(normalizedUserDept);
+}
+
+// Get the display name for the handling department
+function getHandlingDepartmentName(serviceCategory: string): string {
+  const depts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
+  if (!depts || depts.length === 0) return 'Operations';
+  // Capitalize
+  return depts[0].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 interface JobOrderDetailProps {
   jobOrder: JobOrder;
   currentUser?: { role: UserRole; id: string; name: string; department?: string };
@@ -74,18 +115,17 @@ export default function JobOrderDetail({
   const canApprove = (action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED') => {
     if (!currentUser) return false;
     
-    // Check if user is Operations (either role is OPERATIONS or APPROVER with Operations department)
     const userRole = currentUser.role as string;
     const userDepartment = (currentUser as any).department as string;
-    const isOperations = userRole === 'OPERATIONS' || 
-      (userRole === 'APPROVER' && userDepartment === 'Operations');
+    
+    // Check if user is the handling department for this JO's service category
+    const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
     
     // Check if user is President/Management (SUPER_ADMIN/ADMIN should be treated as MANAGEMENT)
     const isPresident = userRole === 'MANAGEMENT' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
     
     const hasApproval = jobOrder.approvals.some(a => {
-      // Check if user already approved with the SAME action (match by role or by mapped roles)
-      if (isOperations && a.role === 'OPERATIONS' && a.action === action) return true;
+      // Check if user already approved with the SAME action
       if (isPresident && a.role === 'MANAGEMENT' && a.action === action) return true;
       return a.role === currentUser.role && a.action === action;
     });
@@ -105,41 +145,26 @@ export default function JobOrderDetail({
     );
     const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
     
-    // Check if Operations has approved for Service type
-    const operationsApproved = jobOrder.approvals.some(a => 
-      a.role === 'OPERATIONS' && a.action === 'APPROVED'
-    );
-    
     switch (action) {
       case 'PREPARED':
-        return isOperations;
+        return isHandlingDept;
       case 'REVIEWED':
         return userRole === 'DEPARTMENT_HEAD';
       case 'NOTED':
         return userRole === 'FINANCE';
       case 'APPROVED':
         if (isServiceType) {
-          // For Service type with materials: Budget must be approved first, then Operations, then President
-          if (serviceNeedsBudget) {
-            if (isOperations) {
-              // Operations can approve after budget is cleared
-              return budgetCleared;
-            }
-            if (isPresident) {
-              // President can approve after Operations has approved (and budget is already cleared)
-              return budgetCleared && operationsApproved;
-            }
-            return false;
-          } else {
-            // For Service type without materials: Operations must approve first, then President can approve
-            if (isOperations) {
-              return true; // Operations can approve first
-            }
-            if (isPresident) {
-              return operationsApproved; // President/Admin can only approve after Operations
-            }
-            return false;
+          // For Service type: Creating the JO counts as handling dept approval
+          // Only President needs to approve
+          if (!isPresident) {
+            return false; // Only President can approve Service type JOs
           }
+          // For Service type with materials: Budget must be approved first
+          if (serviceNeedsBudget) {
+            return budgetCleared;
+          }
+          // For Service type without materials: President can approve directly
+          return true;
         }
         // For Material Requisition: Budget must be approved first, then only Management can approve Job Order
         if (!isPresident) {
@@ -156,14 +181,17 @@ export default function JobOrderDetail({
     if (!currentUser) return;
     
     // Map roles for approvals:
-    // - APPROVER with Operations department → OPERATIONS
+    // - Handling department (based on service category) → DEPARTMENT_HEAD
     // - SUPER_ADMIN/ADMIN → MANAGEMENT (President)
     const userRole = currentUser.role as string;
     const userDepartment = (currentUser as any).department as string;
     let approvalRole = userRole;
     
-    if (userRole === 'APPROVER' && userDepartment === 'Operations') {
-      approvalRole = 'OPERATIONS';
+    // Check if user is the handling department for this JO's service category
+    const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
+    
+    if (isHandlingDept && userRole === 'APPROVER') {
+      approvalRole = 'DEPARTMENT_HEAD';
     } else if (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN') {
       approvalRole = 'MANAGEMENT';
     }
@@ -436,19 +464,15 @@ export default function JobOrderDetail({
         {jobOrder.type === 'SERVICE' && (
           <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
             {(() => {
-              const operationsApproved = jobOrder.approvals.some((a: any) => 
-                a.role === 'OPERATIONS' && a.action === 'APPROVED'
-              );
+              const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
               const presidentApproved = jobOrder.approvals.some((a: any) => 
                 a.role === 'MANAGEMENT' && a.action === 'APPROVED'
               );
               
-              if (operationsApproved && presidentApproved) {
-                return <p className="text-sm text-green-700 font-medium">✓ Approved by Operations and President - Ready for execution</p>;
-              } else if (operationsApproved) {
-                return <p className="text-sm text-yellow-700">✓ Operations approved - Waiting for President approval</p>;
+              if (presidentApproved) {
+                return <p className="text-sm text-green-700 font-medium">✓ Approved by {handlingDeptName} Department (via creation) and President - Ready for execution</p>;
               } else {
-                return <p className="text-sm text-blue-700">Waiting for Operations approval first, then President approval</p>;
+                return <p className="text-sm text-blue-700">✓ Approved by {handlingDeptName} Department (via creation) - Waiting for President approval</p>;
               }
             })()}
           </div>
@@ -461,15 +485,7 @@ export default function JobOrderDetail({
               onClick={() => handleApprove('APPROVED')}
               className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium text-sm sm:text-base"
             >
-              {jobOrder.type === 'SERVICE' 
-                ? ((() => {
-                    const userRole = currentUser?.role as string;
-                    const userDepartment = (currentUser as any)?.department as string;
-                    const isOperations = userRole === 'OPERATIONS' || (userRole === 'APPROVER' && userDepartment === 'Operations');
-                    const isPresident = userRole === 'MANAGEMENT' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
-                    return isOperations ? 'Approve (Operations)' : (isPresident ? 'Approve (President)' : 'Approve Job Order');
-                  })())
-                : 'Approve Job Order'}
+              Approve (President)
             </button>
           )}
         </div>
@@ -477,6 +493,11 @@ export default function JobOrderDetail({
         {!canApprove('APPROVED') && (
           <p className="text-sm text-gray-500 text-center py-4">
             {(() => {
+              const userRole = currentUser?.role as string;
+              const userDepartment = (currentUser as any)?.department;
+              const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
+              const isPresident = userRole === 'MANAGEMENT' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+              
               if (jobOrder.approvals && jobOrder.approvals.length > 0) {
                 // Check if it's Material Requisition and budget not cleared
                 if (jobOrder.type === 'MATERIAL_REQUISITION') {
@@ -494,6 +515,12 @@ export default function JobOrderDetail({
                 }
                 return 'You have already provided your approval or no further approvals are needed.';
               }
+              
+              // For SERVICE type: Handling department created it, now waiting for President
+              if (jobOrder.type === 'SERVICE' && isHandlingDept && !isPresident) {
+                return 'This Job Order is waiting for President approval. Once approved, you can start execution.';
+              }
+              
               return 'No approval actions available for your role.';
             })()}
           </p>

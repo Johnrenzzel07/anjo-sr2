@@ -49,6 +49,30 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
     return num.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   };
 
+  const formatCurrencyWithDecimals = (value: number | string | undefined): string => {
+    if (value === '' || value === null || value === undefined) return '';
+    
+    // Convert to string to handle very large numbers
+    let numStr: string;
+    if (typeof value === 'string') {
+      numStr = value.replace(/,/g, '');
+    } else {
+      // For very large numbers, use toFixed to preserve precision
+      numStr = value.toFixed(2);
+    }
+    
+    // Split into integer and decimal parts
+    const parts = numStr.split('.');
+    const integerPart = parts[0] || '0';
+    const decimalPart = parts[1] || '00';
+    
+    // Format integer part with commas
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    
+    // Combine with decimal part (always 2 digits)
+    return `${formattedInteger}.${decimalPart.padEnd(2, '0').slice(0, 2)}`;
+  };
+
   const parseCurrency = (value: string): number => {
     // Remove commas and parse
     const cleaned = value.replace(/,/g, '').trim();
@@ -323,15 +347,58 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Outsource Service Price (Optional)
             </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="Enter price for outsource service"
-              value={manpower.outsourcePrice || ''}
-              onChange={(e) => setManpower({ ...manpower, outsourcePrice: e.target.value ? parseFloat(e.target.value) : undefined })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            />
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">₱</span>
+              <input
+                type="text"
+                placeholder="0.00"
+                value={manpower.outsourcePrice ? formatCurrencyWithDecimals(manpower.outsourcePrice) : ''}
+                onChange={(e) => {
+                  // Remove peso symbol, spaces, and allow only numbers, commas, and decimal point
+                  let cleaned = e.target.value.replace(/[₱\s]/g, '').replace(/[^0-9,.]/g, '');
+                  
+                  // Remove all commas first to work with raw number
+                  cleaned = cleaned.replace(/,/g, '');
+                  
+                  // Only allow one decimal point
+                  const parts = cleaned.split('.');
+                  let integerPart = parts[0] || '';
+                  
+                  // Remove leading zeros but keep at least one digit
+                  if (integerPart.length > 1) {
+                    integerPart = integerPart.replace(/^0+/, '') || '0';
+                  }
+                  
+                  // Format integer part with commas (handle large numbers as string first)
+                  let formatted = '';
+                  if (integerPart) {
+                    // For very large numbers, format in chunks to avoid precision loss
+                    const numStr = integerPart;
+                    // Add commas every 3 digits from right
+                    formatted = numStr.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                  }
+                  
+                  // Add decimal part if exists
+                  if (parts.length > 1) {
+                    // Limit to 2 decimal places
+                    const decimalPart = parts[1].slice(0, 2);
+                    formatted = formatted ? `${formatted}.${decimalPart}` : `0.${decimalPart}`;
+                  }
+                  
+                  // Parse back to number for storage (use the cleaned value without commas)
+                  const numStr = cleaned;
+                  // Use Number() instead of parseFloat for better large number handling
+                  const numValue = numStr === '' ? undefined : Number(numStr);
+                  
+                  setManpower({ 
+                    ...manpower, 
+                    outsourcePrice: (numValue !== undefined && !isNaN(numValue) && numValue >= 0) ? numValue : undefined 
+                  });
+                }}
+                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md"
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">Enter amount in Philippine Peso (₱) with centavos</p>
           </div>
         )}
       </div>

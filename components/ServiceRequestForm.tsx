@@ -24,18 +24,16 @@ const departments = [
   'Sales',
   'Finance',
   'Marketing',
-  'Other',
+  'Belmont One',
+  'Accounting',
+  'General Services',
 ];
 
 const serviceCategories = [
-  'IT Services',
-  'Maintenance',
-  'Facilities',
-  'Security',
-  'Cleaning',
-  'Repair',
-  'Installation',
-  'Consultation',
+  'Technical Support',
+  'Facility Maintenance',
+  'Account/Billing Inquiry',
+  'General Inquiry',
   'Other',
 ];
 

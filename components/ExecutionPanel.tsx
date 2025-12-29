@@ -5,6 +5,46 @@ import { JobOrder, UserRole } from '@/types';
 import { useToast } from './ToastContainer';
 import { useConfirm } from './useConfirm';
 
+// Service Category to Department mapping for execution management
+const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
+  'Technical Support': ['it'],
+  'Facility Maintenance': ['maintenance'],
+  'Account/Billing Inquiry': ['accounting'],
+  'General Inquiry': ['general services'],
+  'Other': ['operations'],
+};
+
+// Normalize department name for comparison
+function normalizeDept(dept: string | undefined): string {
+  return (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
+}
+
+// Check if user is the handling department for this service category
+function isHandlingDepartment(userDepartment: string | undefined, serviceCategory: string): boolean {
+  const normalizedUserDept = normalizeDept(userDepartment);
+  
+  // President can handle all
+  if (normalizedUserDept === 'president') {
+    return true;
+  }
+  
+  const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
+  if (!authorizedDepts) {
+    // Default to operations for unknown categories
+    return normalizedUserDept === 'operations';
+  }
+  
+  return authorizedDepts.includes(normalizedUserDept);
+}
+
+// Get the display name for the handling department
+function getHandlingDepartmentName(serviceCategory: string): string {
+  const depts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
+  if (!depts || depts.length === 0) return 'Operations';
+  // Capitalize
+  return depts[0].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
 interface ExecutionPanelProps {
   jobOrder: JobOrder;
   currentUser?: { role: UserRole; id: string; name: string; department?: string };
@@ -20,10 +60,17 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
   const userRole = currentUser?.role as string;
   const userDepartment = (currentUser as any)?.department;
-  const canManageExecutionRole = userRole === 'OPERATIONS' || 
+  
+  // Check if user is the handling department for this JO's service category
+  const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
+  const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
+  
+  // Handling department, Operations, Admin, or Super Admin can manage execution
+  const canManageExecutionRole = isHandlingDept ||
+                                 userRole === 'OPERATIONS' || 
                                  userRole === 'ADMIN' || 
                                  userRole === 'SUPER_ADMIN' ||
-                                 (userRole === 'APPROVER' && userDepartment === 'Operations');
+                                 (userRole === 'APPROVER' && normalizeDept(userDepartment) === 'operations');
 
   const isMaterialReq = jobOrder.type === 'MATERIAL_REQUISITION';
   const isServiceType = jobOrder.type === 'SERVICE';
@@ -255,13 +302,15 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
           <p className="text-sm text-gray-500">
             {jobOrder.status === 'IN_PROGRESS' 
               ? 'Execution is in progress. Click the button above to complete execution.'
+              : jobOrder.status === 'DRAFT'
+                ? `Job Order is currently ${jobOrder.status}. It must be approved by President first. Once approved, ${handlingDeptName} Department can start execution.`
               : serviceNeedsBudget && !budgetCleared
                 ? 'Execution can only be started after budget is approved by Finance and President.'
                 : isMaterialReq && !hasPurchaseOrder
                   ? 'Create a Purchase Order and complete material transfer before starting execution.'
                   : isMaterialReq && !hasCompletedTransfer
                     ? 'Complete the material transfer before starting execution.'
-                    : 'Execution can only be started by Operations or Admin when Job Order is APPROVED.'}
+                    : `Execution can only be started by ${handlingDeptName} Department or Admin when Job Order is APPROVED.`}
           </p>
         )}
       </div>

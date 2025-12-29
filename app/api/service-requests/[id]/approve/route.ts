@@ -108,13 +108,14 @@ export async function POST(
       serviceRequest.contactEmail
     );
 
-    // If approved, notify Operations to create Job Order
+    // If approved, notify the HANDLING department (based on service category) to create Job Order
     if (body.action === 'APPROVED') {
-      const { notifyServiceRequestApprovedForJO } = await import('@/lib/utils/notifications');
-      await notifyServiceRequestApprovedForJO(
+      const { notifyHandlingDepartmentForJO } = await import('@/lib/utils/notifications');
+      await notifyHandlingDepartmentForJO(
         serviceRequest._id.toString(),
         serviceRequest.srNumber,
-        body.userName // Include approver name
+        serviceRequest.serviceCategory,
+        serviceRequest.department
       );
     }
 

@@ -42,22 +42,24 @@ export async function POST(
     
     // Check for Service type sequential approvals
     const isServiceType = jobOrder.type === 'SERVICE';
-    const operationsApproved = jobOrder.approvals.some((a: any) => 
-      a.role === 'OPERATIONS' && a.action === 'APPROVED'
-    );
+    // For SERVICE type: Creating the JO counts as handling department approval
+    // Only President approval is needed
     const presidentApproved = jobOrder.approvals.some((a: any) => 
       a.role === 'MANAGEMENT' && a.action === 'APPROVED'
+    );
+    
+    // Legacy check for Operations approval (for backward compatibility with old JOs)
+    const operationsApproved = jobOrder.approvals.some((a: any) => 
+      a.role === 'OPERATIONS' && a.action === 'APPROVED'
     );
 
     if (jobOrder.status !== 'CLOSED') {
       if (isServiceType) {
-        // For Service type: Require both Operations and President approval
-        if (operationsApproved && presidentApproved) {
+        // For Service type: Only President approval is needed (creating JO = handling dept approval)
+        if (presidentApproved) {
           jobOrder.status = 'APPROVED';
-        } else if (operationsApproved) {
-          // Operations approved, waiting for President
-          jobOrder.status = 'DRAFT'; // Keep as DRAFT until President approves
         } else {
+          // Still waiting for President approval
           jobOrder.status = 'DRAFT';
         }
       } else {
@@ -82,20 +84,15 @@ export async function POST(
     const currentApprover = body.userName;
     
     if (isServiceType) {
-      // For Service type: If Operations approved, notify Management
-      if (operationsApproved && !presidentApproved) {
-        // Find the Operations approver name
-        const operationsApprover = jobOrder.approvals.find((a: any) => 
-          a.role === 'OPERATIONS' && a.action === 'APPROVED'
-        );
-        const approverName = operationsApprover?.userName || currentApprover;
-        
-        await notifyJobOrderNeedsApproval(
+      // For Service type: When President approves, notify handling department that they can start execution
+      if (presidentApproved) {
+        const { notifyHandlingDepartmentReadyForExecution } = await import('@/lib/utils/notifications');
+        await notifyHandlingDepartmentReadyForExecution(
           jobOrder._id.toString(),
           jobOrder.joNumber,
-          'MANAGEMENT',
-          'SERVICE',
-          approverName
+          jobOrder.serviceCategory,
+          currentApprover,
+          body.role // Pass the approver's role (e.g., 'MANAGEMENT' for President)
         );
       }
     } else {

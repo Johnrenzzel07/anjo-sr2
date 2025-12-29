@@ -14,7 +14,8 @@ const departments = [
   'IT Department',
   'Maintenance',
   'Belmont One',
-  'Other',
+  'Accounting',
+  'General Services',
 ];
 
 export default function SignupPage() {

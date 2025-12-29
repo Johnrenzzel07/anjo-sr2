@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import JobOrder from '@/lib/models/JobOrder';
+import { notifyJobOrderExecutionCompleted } from '@/lib/utils/notifications';
 
 export async function PATCH(
   request: NextRequest,
@@ -94,6 +95,15 @@ export async function PATCH(
     }
 
     await jobOrder.save();
+    
+    // Notify requester's department head when execution is completed
+    if (action === 'COMPLETE' && jobOrder.department) {
+      await notifyJobOrderExecutionCompleted(
+        jobOrder._id.toString(),
+        jobOrder.joNumber,
+        jobOrder.department
+      );
+    }
     
     // Populate service request for response
     await jobOrder.populate('srId', 'srNumber requestedBy department');

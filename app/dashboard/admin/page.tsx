@@ -804,7 +804,7 @@ export default function AdminDashboard() {
               
               return filteredSRs.length > 0 ? (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                  <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
                     {filteredSRs.map((sr) => {
                   const srId = sr.id || sr._id || '';
                   const srIdString = srId.toString();
@@ -836,24 +836,15 @@ export default function AdminDashboard() {
                   const canCreateJO = sr.status === 'APPROVED' && !hasJO && !joLoading;
                   
                   return (
-                    <div key={srId}>
+                    <div key={srId} className="break-inside-avoid mb-4 sm:mb-6">
                       <ServiceRequestCard
                         serviceRequest={sr}
                         showCreateJO={canCreateJO}
                         onCreateJO={handleCreateJO}
                         currentUser={user}
                         onApprovalUpdate={() => fetchData(true)}
+                        hasJobOrder={hasJO}
                       />
-                      {hasJO && (
-                        <div className="mt-2 text-sm text-green-600 text-center">
-                          ✓ Job Order already created
-                        </div>
-                      )}
-                      {joLoading && sr.status === 'APPROVED' && (
-                        <div className="mt-2 text-sm text-gray-500 text-center">
-                          Checking for existing Job Order...
-                        </div>
-                      )}
                     </div>
                   );
                     })}
@@ -928,9 +919,11 @@ export default function AdminDashboard() {
               }
               
               return filteredJOs.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
                   {filteredJOs.map((jo) => (
-                    <JobOrderCard key={jo.id || jo._id} jobOrder={jo} currentUser={user} />
+                    <div key={jo.id || jo._id} className="break-inside-avoid mb-4 sm:mb-6">
+                      <JobOrderCard jobOrder={jo} currentUser={user} />
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -970,9 +963,11 @@ export default function AdminDashboard() {
               }
               
               return filteredPOs.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
                   {filteredPOs.map((po) => (
-                    <PurchaseOrderCard key={po.id || po._id} purchaseOrder={po} currentUser={user} />
+                    <div key={po.id || po._id} className="break-inside-avoid mb-4 sm:mb-6">
+                      <PurchaseOrderCard purchaseOrder={po} currentUser={user} />
+                    </div>
                   ))}
                 </div>
               ) : (

@@ -22,20 +22,36 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
     jobOrder.acceptance?.serviceAcceptedBy || ''
   );
 
-  // Only authorized users (Operations, Admin, Super Admin) can edit acceptance info
+  // Normalize department names for comparison
+  const normalizeDept = (dept: string | undefined): string => {
+    return (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
+  };
+
+  // Get the requester's department from the Service Request
+  const requesterDepartment = jobOrder.serviceRequest?.department || jobOrder.department;
+  const normalizedRequesterDept = normalizeDept(requesterDepartment);
+  const normalizedUserDept = normalizeDept((currentUser as any)?.department);
+
+  // Only the requester's department head can edit acceptance info
+  // Admin and Super Admin can also edit
   const userRole = currentUser?.role as string;
-  const canManageAcceptance = userRole === 'OPERATIONS' || 
-                              userRole === 'ADMIN' || 
-                              userRole === 'SUPER_ADMIN' ||
-                              (userRole === 'APPROVER' && (currentUser as any)?.department === 'Operations');
+  const isRequesterDeptHead = (userRole === 'APPROVER' || userRole === 'DEPARTMENT_HEAD') &&
+                              normalizedUserDept === normalizedRequesterDept;
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
   
+  // Can edit if user is requester's department head or admin
   const canEditAcceptance = 
     (jobOrder.status === 'COMPLETED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'CLOSED') &&
-    canManageAcceptance;
+    (isRequesterDeptHead || isAdmin);
   
+  // Can accept service if user is requester's department head or admin
   const canAcceptService = 
     jobOrder.status === 'COMPLETED' && 
-    (currentUser?.role === 'DEPARTMENT_HEAD' || currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN');
+    (isRequesterDeptHead || isAdmin);
+  
+  // Can view (read-only) if user is handling department, requester's department, or admin
+  const canViewAcceptance = canEditAcceptance || isAdmin || 
+    (jobOrder.status === 'COMPLETED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'CLOSED');
 
 
   const handleAcceptService = async () => {
@@ -111,17 +127,17 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
           <p className="text-sm text-blue-800">
             <strong>Purpose:</strong> This section is used to record the actual completion of the service work and formal acceptance by the requester. 
-            Operations can update actual start/completion dates and work notes during execution. 
-            Once work is completed, the requester (Department Head) can formally accept the service, which closes the Job Order.
+            The handling department can update actual start/completion dates during execution. 
+            Once work is completed, only the <strong>{requesterDepartment} Department Head</strong> (the requester's department) can add completion notes and formally accept the service, which closes the Job Order.
           </p>
         </div>
       )}
       
-      {!hasAcceptanceInfo && jobOrder.status !== 'COMPLETED' && jobOrder.status !== 'IN_PROGRESS' && (
+      {!hasAcceptanceInfo && jobOrder.status !== 'COMPLETED' && jobOrder.status !== 'IN_PROGRESS' && !canViewAcceptance && (
         <p className="text-sm text-gray-500">No completion information yet.</p>
       )}
 
-      {hasAcceptanceInfo || canEditAcceptance ? (
+      {(hasAcceptanceInfo || canEditAcceptance || canViewAcceptance) ? (
         <div className="space-y-4">
           {/* Actual Start Date - Read-only, set automatically during execution */}
           {jobOrder.acceptance?.actualStartDate && (
@@ -158,14 +174,25 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Work Completion Notes (Optional)
             </label>
-            <textarea
-              value={workCompletionNotes}
-              onChange={(e) => setWorkCompletionNotes(e.target.value)}
-              rows={4}
-              disabled={loading || !!jobOrder.acceptance?.serviceAcceptedBy}
-              placeholder="Describe the completed work, any issues encountered, final status, and follow-up requirements (optional)..."
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-            />
+            {canEditAcceptance ? (
+              <textarea
+                value={workCompletionNotes}
+                onChange={(e) => setWorkCompletionNotes(e.target.value)}
+                rows={4}
+                disabled={loading || !!jobOrder.acceptance?.serviceAcceptedBy}
+                placeholder="Describe the completed work, any issues encountered, final status, and follow-up requirements (optional)..."
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              />
+            ) : (
+              <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700 min-h-[100px]">
+                {jobOrder.acceptance?.workCompletionNotes || 'No completion notes provided.'}
+              </div>
+            )}
+            {!canEditAcceptance && normalizedUserDept !== normalizedRequesterDept && (
+              <p className="text-xs text-gray-500 mt-1">
+                Only {requesterDepartment} Department Head can edit completion notes.
+              </p>
+            )}
           </div>
 
           {/* Service Acceptance Section - Only show when COMPLETED */}
@@ -178,21 +205,44 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Accepted By <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={serviceAcceptedBy}
-                    onChange={(e) => setServiceAcceptedBy(e.target.value)}
-                    disabled={loading || !!jobOrder.acceptance?.serviceAcceptedBy}
-                    placeholder="Enter name of person accepting the service"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  />
-                  {jobOrder.acceptance?.serviceAcceptedBy && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      Accepted by: {jobOrder.acceptance.serviceAcceptedBy} on{' '}
-                      {jobOrder.acceptance.dateAccepted 
-                        ? new Date(jobOrder.acceptance.dateAccepted).toLocaleDateString()
-                        : 'N/A'}
-                    </p>
+                  {canAcceptService ? (
+                    <>
+                      <input
+                        type="text"
+                        value={serviceAcceptedBy}
+                        onChange={(e) => setServiceAcceptedBy(e.target.value)}
+                        disabled={loading || !!jobOrder.acceptance?.serviceAcceptedBy}
+                        placeholder="Enter name of person accepting the service"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                      />
+                      {jobOrder.acceptance?.serviceAcceptedBy && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Accepted by: {jobOrder.acceptance.serviceAcceptedBy} on{' '}
+                          {jobOrder.acceptance.dateAccepted 
+                            ? new Date(jobOrder.acceptance.dateAccepted).toLocaleDateString()
+                            : 'N/A'}
+                        </p>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700">
+                        {jobOrder.acceptance?.serviceAcceptedBy || 'Not accepted yet'}
+                      </div>
+                      {!jobOrder.acceptance?.serviceAcceptedBy && normalizedUserDept !== normalizedRequesterDept && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Only {requesterDepartment} Department Head can accept the service.
+                        </p>
+                      )}
+                      {jobOrder.acceptance?.serviceAcceptedBy && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Accepted by: {jobOrder.acceptance.serviceAcceptedBy} on{' '}
+                          {jobOrder.acceptance.dateAccepted 
+                            ? new Date(jobOrder.acceptance.dateAccepted).toLocaleDateString()
+                            : 'N/A'}
+                        </p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -235,6 +285,12 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
             {canEditAcceptance && !canAcceptService && jobOrder.status !== 'CLOSED' && (
               <p className="text-sm text-gray-500">
                 Start and completion dates are set automatically during execution. You can add optional completion notes above.
+              </p>
+            )}
+            
+            {!canEditAcceptance && !canAcceptService && jobOrder.status === 'COMPLETED' && normalizedUserDept !== normalizedRequesterDept && (
+              <p className="text-sm text-gray-500">
+                Only {requesterDepartment} Department Head can edit completion notes and accept the service.
               </p>
             )}
           </div>

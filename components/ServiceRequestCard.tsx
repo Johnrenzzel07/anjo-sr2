@@ -7,12 +7,75 @@ import Link from 'next/link';
 import { useToast } from './ToastContainer';
 import { useApprovalModal } from './useApprovalModal';
 
+// Service Category to Department mapping for JO creation and SR approval authorization
+const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
+  'Technical Support': ['it'],
+  'Facility Maintenance': ['maintenance'],
+  'Account/Billing Inquiry': ['accounting'],
+  'General Inquiry': ['general services'],
+  'Other': ['operations'],
+};
+
+// Normalize department name for comparison
+function normalizeDepartment(dept: string | undefined): string {
+  return (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
+}
+
+// Check if user is the handling department head for this service category
+function isHandlingDepartmentHead(userDepartment: string | undefined, userRole: string, serviceCategory: string): boolean {
+  // Must be APPROVER, ADMIN, or SUPER_ADMIN
+  if (userRole !== 'APPROVER' && userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
+    return false;
+  }
+  
+  // ADMIN and SUPER_ADMIN can approve all
+  if (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN') {
+    return true;
+  }
+  
+  const normalizedUserDept = normalizeDepartment(userDepartment);
+  
+  // President can approve any service category
+  if (normalizedUserDept === 'president') {
+    return true;
+  }
+  
+  // Get authorized departments for this service category
+  const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
+  
+  if (!authorizedDepts) {
+    // If service category is not in mapping, only Operations can handle it
+    return normalizedUserDept === 'operations';
+  }
+  
+  return authorizedDepts.includes(normalizedUserDept);
+}
+
+// Check if user can create JO for this service category (same logic as approval)
+function canUserCreateJO(userDepartment: string | undefined, userRole: string, serviceCategory: string): boolean {
+  return isHandlingDepartmentHead(userDepartment, userRole, serviceCategory);
+}
+
+// Get authorization message for display
+function getAuthMessage(serviceCategory: string): string {
+  const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
+  if (!authorizedDepts) {
+    return 'Only Operations Department can create Job Orders for this category.';
+  }
+  const deptNames = authorizedDepts.map(d => d.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+  if (deptNames.length === 1) {
+    return `Only ${deptNames[0]} Department can create Job Orders for "${serviceCategory}".`;
+  }
+  return `Only ${deptNames.join(' or ')} Department can create Job Orders for "${serviceCategory}".`;
+}
+
 interface ServiceRequestCardProps {
   serviceRequest: ServiceRequest;
   showCreateJO?: boolean;
   onCreateJO?: (srId: string) => void;
   currentUser?: { role: UserRole; id: string; name: string; department?: string };
   onApprovalUpdate?: () => void;
+  hasJobOrder?: boolean;
 }
 
 export default function ServiceRequestCard({ 
@@ -20,7 +83,8 @@ export default function ServiceRequestCard({
   showCreateJO = false,
   onCreateJO,
   currentUser,
-  onApprovalUpdate
+  onApprovalUpdate,
+  hasJobOrder = false
 }: ServiceRequestCardProps) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
@@ -30,20 +94,33 @@ export default function ServiceRequestCard({
     (a: any) => a.role === 'DEPARTMENT_HEAD' && a.action === 'APPROVED'
   );
 
-  // Normalize department names so minor differences (e.g., "IT" vs "IT Department") still match
+  // Normalize department names for comparison
   const normalizeDept = (dept?: string) =>
     (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
 
-  const isDepartmentHead = !!currentUser && (() => {
+  // Check if current user is the REQUESTER'S department head (for SR approval)
+  // The requester's own department head approves the Service Request
+  const isRequesterDeptHead = !!currentUser && (() => {
     const userRole = currentUser.role as string;
-    return (
-      (userRole === 'APPROVER' || userRole === 'ADMIN' || userRole === 'SUPER_ADMIN') &&
-      normalizeDept(currentUser.department) === normalizeDept(serviceRequest.department)
-    );
+    if (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN') {
+      return true; // Admin/Super Admin can approve any SR
+    }
+    if (userRole !== 'APPROVER') {
+      return false;
+    }
+    // Check if user's department matches the SR's department (requester's department)
+    return normalizeDept(currentUser.department) === normalizeDept(serviceRequest.department);
+  })();
+
+  // Check if current user is the HANDLING department head (for JO creation)
+  // Based on service category - IT dept creates JO for "Technical Support", etc.
+  const isHandlingDeptHead = !!currentUser && (() => {
+    const userRole = currentUser.role as string;
+    return isHandlingDepartmentHead(currentUser.department, userRole, serviceRequest.serviceCategory);
   })();
 
   const canApprove = 
-    isDepartmentHead &&
+    isRequesterDeptHead &&
     serviceRequest.status === 'SUBMITTED' &&
     !departmentHeadApproved;
 
@@ -110,13 +187,17 @@ export default function ServiceRequestCard({
   // Show visual highlight if approval is needed (even for users who can approve)
   const needsApprovalHighlight = serviceRequest.status === 'SUBMITTED' && !departmentHeadApproved;
   // Check if current user needs to approve (for different highlight color)
-  const needsUserApproval = needsApprovalHighlight && isDepartmentHead;
+  const needsUserApproval = needsApprovalHighlight && isRequesterDeptHead;
+  // Show visual highlight if SR is APPROVED and handling department can create JO
+  const canCreateJOHighlight = serviceRequest.status === 'APPROVED' && isHandlingDeptHead && showCreateJO;
 
   return (
     <>
       <ApprovalDialog />
       <div className={`bg-white rounded-lg shadow-md p-6 border-2 transition-all ${
-        needsUserApproval
+        canCreateJOHighlight
+          ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+          : needsUserApproval
           ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
           : needsApprovalHighlight 
           ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow' 
@@ -148,7 +229,7 @@ export default function ServiceRequestCard({
           </div>
 
           {/* Needs Approval Card - Hide warning message for Department Head who can approve, but show visual highlight */}
-          {serviceRequest.status === 'SUBMITTED' && !departmentHeadApproved && !isDepartmentHead && (
+          {serviceRequest.status === 'SUBMITTED' && !departmentHeadApproved && !isRequesterDeptHead && (
             <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-md">
               <div className="flex items-center gap-2">
                 <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,7 +244,7 @@ export default function ServiceRequestCard({
           )}
 
           {/* Department Head Approval Status (hidden for the Department Head themselves) */}
-          {!isDepartmentHead && (serviceRequest.status === 'SUBMITTED' || serviceRequest.status === 'APPROVED') && (
+          {!isRequesterDeptHead && (serviceRequest.status === 'SUBMITTED' || serviceRequest.status === 'APPROVED') && (
             <div className="mb-4 p-3 bg-gray-50 rounded-md">
               <p className="text-xs font-medium text-gray-700 mb-2">Department Head Approval:</p>
               {departmentHeadApproved ? (
@@ -197,21 +278,60 @@ export default function ServiceRequestCard({
           </div>
         )}
 
-        {/* Show Create Job Order button if status is APPROVED */}
-        {/* If status is APPROVED, we allow creation even without explicit approval record (backward compatibility) */}
-        {showCreateJO && serviceRequest.status === 'APPROVED' && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onCreateJO?.(serviceRequest.id || serviceRequest._id || '');
-            }}
-            className="w-full mt-4 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
-          >
-            Create Job Order
-          </button>
+        {/* Job Order already created message */}
+        {hasJobOrder && (
+          <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-md">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <p className="text-sm text-green-600 font-medium">Job Order already created</p>
+            </div>
+          </div>
         )}
+
+        {/* Show Create Job Order button if status is APPROVED and user is authorized (handling dept) */}
+        {/* The HANDLING department (based on service category) creates the Job Order */}
+        {showCreateJO && serviceRequest.status === 'APPROVED' && (() => {
+          if (isHandlingDeptHead) {
+            return (
+              <>
+                {/* Ready for Job Order Creation Message */}
+                <div className="mt-4 p-3 bg-blue-50 border-2 border-blue-300 rounded-md">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-blue-800">Ready for Job Order Creation</p>
+                      <p className="text-xs text-blue-700">You can now create a Job Order for this Service Request</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onCreateJO?.(serviceRequest.id || serviceRequest._id || '');
+                  }}
+                  className="w-full mt-4 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+                >
+                  Create Job Order
+                </button>
+              </>
+            );
+          } else {
+            // Show message about who can create JO
+            return (
+              <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-md">
+                <p className="text-xs text-gray-600 text-center">
+                  {getAuthMessage(serviceRequest.serviceCategory)}
+                </p>
+              </div>
+            );
+          }
+        })()}
       </div>
     </>
   );
