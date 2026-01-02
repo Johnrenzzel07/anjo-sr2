@@ -340,11 +340,11 @@ export async function POST(request: NextRequest) {
     );
 
     // After save, verify it was saved by querying the database directly
-    const verifySave = await JobOrder.findById(jobOrder._id).lean();
+    const verifySave = await JobOrder.findById(jobOrder._id).lean() as any;
     console.log('After save verification:', {
       _id: verifySave?._id,
-      type: (verifySave as any)?.type,
-      joNumber: (verifySave as any)?.joNumber,
+      type: verifySave?.type,
+      joNumber: verifySave?.joNumber,
       allFields: Object.keys(verifySave || {})
     });
 
