@@ -56,9 +56,26 @@ export async function PATCH(
     };
 
     if (body.status !== undefined) {
+      const previousPO = await PurchaseOrder.findById(id);
+      const wasSubmitted = previousPO?.status === 'SUBMITTED';
+      const isNowSubmitted = body.status === 'SUBMITTED';
+      
       updateData.status = body.status;
       if (body.status === 'CLOSED') {
         updateData.closedAt = new Date().toISOString();
+      }
+      
+      // Notify President when PO is submitted for approval
+      if (!wasSubmitted && isNowSubmitted) {
+        const { notifyPurchaseOrderNeedsApproval } = await import('@/lib/utils/notifications');
+        if (previousPO) {
+          await notifyPurchaseOrderNeedsApproval(
+            id,
+            previousPO.poNumber,
+            previousPO.requestedBy,
+            previousPO.department
+          );
+        }
       }
       
       // Auto-update Job Order status when PO is RECEIVED

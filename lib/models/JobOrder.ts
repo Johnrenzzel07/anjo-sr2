@@ -81,7 +81,7 @@ const ApprovalSchema = new Schema({
   userName: String,
   action: {
     type: String,
-    enum: ['PREPARED', 'REVIEWED', 'NOTED', 'APPROVED', 'BUDGET_APPROVED', 'BUDGET_REJECTED'],
+    enum: ['PREPARED', 'REVIEWED', 'NOTED', 'APPROVED', 'REJECTED', 'SUBMITTED', 'BUDGET_APPROVED', 'BUDGET_REJECTED'],
   },
   timestamp: String,
   comments: String,
@@ -176,7 +176,7 @@ const JobOrderSchema = new Schema<IJobOrder>({
   },
   status: {
     type: String,
-    enum: ['DRAFT', 'BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'],
+    enum: ['DRAFT', 'BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'CLOSED'],
     default: 'DRAFT',
   },
   createdAt: {
@@ -195,7 +195,7 @@ const JobOrderSchema = new Schema<IJobOrder>({
 });
 
 // Auto-generate JO Number before save
-JobOrderSchema.pre('save', async function() {
+JobOrderSchema.pre('save', async function () {
   if (this.isNew && !this.joNumber) {
     const year = new Date().getFullYear();
     const count = await mongoose.model('JobOrder').countDocuments({});
@@ -204,12 +204,11 @@ JobOrderSchema.pre('save', async function() {
   this.updatedAt = new Date().toISOString();
 });
 
-let JobOrder: mongoose.Model<IJobOrder>;
-if (models.JobOrder) {
-  JobOrder = models.JobOrder as mongoose.Model<IJobOrder>;
-} else {
-  JobOrder = model<IJobOrder>('JobOrder', JobOrderSchema);
+// Forcefully clear the model cache in development to ensure enum updates like 'REJECTED' are picked up
+if (process.env.NODE_ENV === 'development' && models.JobOrder) {
+  delete (models as any).JobOrder;
 }
 
+const JobOrder = models.JobOrder || model<IJobOrder>('JobOrder', JobOrderSchema);
 export default JobOrder;
 

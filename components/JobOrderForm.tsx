@@ -351,44 +351,29 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
               <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">₱</span>
               <input
                 type="text"
-                placeholder="0.00"
-                value={manpower.outsourcePrice ? formatCurrencyWithDecimals(manpower.outsourcePrice) : ''}
+                placeholder="0"
+                value={manpower.outsourcePrice ? formatCurrency(manpower.outsourcePrice) : ''}
                 onChange={(e) => {
-                  // Remove peso symbol, spaces, and allow only numbers, commas, and decimal point
-                  let cleaned = e.target.value.replace(/[₱\s]/g, '').replace(/[^0-9,.]/g, '');
+                  // Remove peso symbol, spaces, and allow only numbers and commas
+                  let cleaned = e.target.value.replace(/[₱\s]/g, '').replace(/[^0-9,]/g, '');
                   
                   // Remove all commas first to work with raw number
                   cleaned = cleaned.replace(/,/g, '');
                   
-                  // Only allow one decimal point
-                  const parts = cleaned.split('.');
-                  let integerPart = parts[0] || '';
-                  
                   // Remove leading zeros but keep at least one digit
-                  if (integerPart.length > 1) {
-                    integerPart = integerPart.replace(/^0+/, '') || '0';
+                  if (cleaned.length > 1) {
+                    cleaned = cleaned.replace(/^0+/, '') || '0';
                   }
                   
-                  // Format integer part with commas (handle large numbers as string first)
+                  // Format with commas (handle large numbers as string first)
                   let formatted = '';
-                  if (integerPart) {
-                    // For very large numbers, format in chunks to avoid precision loss
-                    const numStr = integerPart;
+                  if (cleaned) {
                     // Add commas every 3 digits from right
-                    formatted = numStr.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                    formatted = cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
                   }
                   
-                  // Add decimal part if exists
-                  if (parts.length > 1) {
-                    // Limit to 2 decimal places
-                    const decimalPart = parts[1].slice(0, 2);
-                    formatted = formatted ? `${formatted}.${decimalPart}` : `0.${decimalPart}`;
-                  }
-                  
-                  // Parse back to number for storage (use the cleaned value without commas)
-                  const numStr = cleaned;
-                  // Use Number() instead of parseFloat for better large number handling
-                  const numValue = numStr === '' ? undefined : Number(numStr);
+                  // Parse back to number for storage (use the cleaned value without commas) and round to whole number
+                  const numValue = cleaned === '' ? undefined : Math.round(Number(cleaned));
                   
                   setManpower({ 
                     ...manpower, 
@@ -398,7 +383,7 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
                 className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md"
               />
             </div>
-            <p className="mt-1 text-xs text-gray-500">Enter amount in Philippine Peso (₱) with centavos</p>
+            <p className="mt-1 text-xs text-gray-500">Enter amount in Philippine Peso (₱)</p>
           </div>
         )}
       </div>

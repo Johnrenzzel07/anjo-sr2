@@ -81,7 +81,7 @@ const ServiceRequestSchema = new Schema<IServiceRequest>({
       userName: String,
       action: {
         type: String,
-        enum: ['PREPARED', 'REVIEWED', 'NOTED', 'APPROVED', 'REJECTED'],
+        enum: ['PREPARED', 'REVIEWED', 'NOTED', 'APPROVED', 'REJECTED', 'SUBMITTED', 'BUDGET_APPROVED', 'BUDGET_REJECTED'],
       },
       timestamp: String,
       comments: String,
@@ -101,7 +101,7 @@ const ServiceRequestSchema = new Schema<IServiceRequest>({
 });
 
 // Auto-generate SR Number before validation
-ServiceRequestSchema.pre('validate', async function() {
+ServiceRequestSchema.pre('validate', async function () {
   try {
     if (this.isNew && !this.srNumber) {
       const year = new Date().getFullYear();
@@ -113,9 +113,14 @@ ServiceRequestSchema.pre('validate', async function() {
   }
 });
 
-ServiceRequestSchema.pre('save', function() {
+ServiceRequestSchema.pre('save', function () {
   this.updatedAt = new Date().toISOString();
 });
+
+// Forcefully clear the model cache in development to ensure enum updates are picked up
+if (process.env.NODE_ENV === 'development' && models.ServiceRequest) {
+  delete (models as any).ServiceRequest;
+}
 
 const ServiceRequest = (models.ServiceRequest as mongoose.Model<IServiceRequest>) || model<IServiceRequest>('ServiceRequest', ServiceRequestSchema);
 

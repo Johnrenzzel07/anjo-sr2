@@ -27,27 +27,27 @@ function isHandlingDepartmentHead(userDepartment: string | undefined, userRole: 
   if (userRole !== 'APPROVER' && userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
     return false;
   }
-  
+
   // ADMIN and SUPER_ADMIN can approve all
   if (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN') {
     return true;
   }
-  
+
   const normalizedUserDept = normalizeDepartment(userDepartment);
-  
+
   // President can approve any service category
   if (normalizedUserDept === 'president') {
     return true;
   }
-  
+
   // Get authorized departments for this service category
   const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
-  
+
   if (!authorizedDepts) {
     // If service category is not in mapping, only Operations can handle it
     return normalizedUserDept === 'operations';
   }
-  
+
   return authorizedDepts.includes(normalizedUserDept);
 }
 
@@ -78,8 +78,8 @@ interface ServiceRequestCardProps {
   hasJobOrder?: boolean;
 }
 
-export default function ServiceRequestCard({ 
-  serviceRequest, 
+export default function ServiceRequestCard({
+  serviceRequest,
   showCreateJO = false,
   onCreateJO,
   currentUser,
@@ -119,7 +119,7 @@ export default function ServiceRequestCard({
     return isHandlingDepartmentHead(currentUser.department, userRole, serviceRequest.serviceCategory);
   })();
 
-  const canApprove = 
+  const canApprove =
     isRequesterDeptHead &&
     serviceRequest.status === 'SUBMITTED' &&
     !departmentHeadApproved;
@@ -127,11 +127,11 @@ export default function ServiceRequestCard({
   const handleApproveClick = async (e: React.MouseEvent, action: 'APPROVED' | 'REJECTED') => {
     e.stopPropagation(); // Prevent any event bubbling
     if (!currentUser) return;
-    
+
     // Show approval modal
     const comments = await showApproval({
       title: action === 'APPROVED' ? 'Approve Service Request' : 'Reject Service Request',
-      message: action === 'APPROVED' 
+      message: action === 'APPROVED'
         ? `Are you sure you want to approve ${serviceRequest.srNumber}?`
         : `Are you sure you want to reject ${serviceRequest.srNumber}? Please provide a reason.`,
       confirmButtonText: action === 'APPROVED' ? 'Approve' : 'Reject',
@@ -139,15 +139,15 @@ export default function ServiceRequestCard({
       placeholder: 'Enter rejection reason (required)...',
       showComments: action === 'REJECTED', // Only show comments for rejections
     });
-    
+
     if (comments === null) return; // User cancelled
-    
+
     // For rejection, require comments
     if (action === 'REJECTED' && !comments.trim()) {
       toast.showError('Please provide a reason for rejection');
       return;
     }
-    
+
     await handleApprove(action, comments || '');
   };
 
@@ -171,6 +171,21 @@ export default function ServiceRequestCard({
 
       if (response.ok) {
         toast.showSuccess(`Service Request ${action.toLowerCase()} successfully!`);
+
+        // Mark related notifications as read after approval/rejection
+        try {
+          await fetch('/api/notifications/mark-read-by-entity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              relatedEntityType: 'SERVICE_REQUEST',
+              relatedEntityId: srId,
+            }),
+          });
+        } catch (notifError) {
+          console.error('Error marking notifications as read:', notifError);
+        }
+
         onApprovalUpdate?.();
       } else {
         const error = await response.json();
@@ -194,15 +209,14 @@ export default function ServiceRequestCard({
   return (
     <>
       <ApprovalDialog />
-      <div className={`bg-white rounded-lg shadow-md p-6 border-2 transition-all ${
-        canCreateJOHighlight
+      <div className={`bg-white rounded-lg shadow-md p-6 border-2 transition-all ${canCreateJOHighlight
           ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
           : needsUserApproval
-          ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
-          : needsApprovalHighlight 
-          ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow' 
-          : 'border-gray-200 hover:shadow-lg'
-      }`}>
+            ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+            : needsApprovalHighlight
+              ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow'
+              : 'border-gray-200 hover:shadow-lg'
+        }`}>
         <Link href={`/service-requests/${serviceRequest.id || serviceRequest._id}`} className="block">
           <div className="flex justify-between items-start mb-4">
             <div>
@@ -211,7 +225,7 @@ export default function ServiceRequestCard({
             </div>
             <StatusBadge status={serviceRequest.status} type="sr" />
           </div>
-          
+
           <div className="space-y-2 mb-4">
             <p className="text-sm">
               <span className="font-medium text-gray-700">Requested By:</span>{' '}
@@ -290,9 +304,9 @@ export default function ServiceRequestCard({
           </div>
         )}
 
-        {/* Show Create Job Order button if status is APPROVED and user is authorized (handling dept) */}
+        {/* Show Create Job Order button if status is APPROVED, no JO exists, and user is authorized (handling dept) */}
         {/* The HANDLING department (based on service category) creates the Job Order */}
-        {showCreateJO && serviceRequest.status === 'APPROVED' && (() => {
+        {showCreateJO && !hasJobOrder && serviceRequest.status === 'APPROVED' && (() => {
           if (isHandlingDeptHead) {
             return (
               <>

@@ -67,7 +67,21 @@ export default function JobOrderPage() {
           jo.srId = jo.srId._id.toString();
         }
         setJobOrder(jo);
-        
+
+        // Mark related notifications as read
+        try {
+          await fetch('/api/notifications/mark-read-by-entity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              relatedEntityType: 'JOB_ORDER',
+              relatedEntityId: jo.id || jo._id?.toString(),
+            }),
+          });
+        } catch (notifError) {
+          console.error('Error marking notifications as read:', notifError);
+        }
+
         // Check if PO exists for this JO
         if (jo.type === 'MATERIAL_REQUISITION') {
           const poResponse = await fetch(`/api/purchase-orders?joId=${jo._id || jo.id}`);
@@ -102,6 +116,20 @@ export default function JobOrderPage() {
       if (response.ok) {
         const data = await response.json();
         setJobOrder(data.jobOrder);
+
+        // Mark related notifications as read after approval
+        try {
+          await fetch('/api/notifications/mark-read-by-entity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              relatedEntityType: 'JOB_ORDER',
+              relatedEntityId: joId,
+            }),
+          });
+        } catch (notifError) {
+          console.error('Error marking notifications as read:', notifError);
+        }
       } else {
         const error = await response.json();
         toast.showError(error.error || 'Failed to add approval');
@@ -165,8 +193,8 @@ export default function JobOrderPage() {
         router.push(`/purchase-orders/${result.purchaseOrder._id || result.purchaseOrder.id}`);
       } else {
         const error = await response.json();
-        const errorMessage = error.details 
-          ? `${error.error}\n\n${error.details}` 
+        const errorMessage = error.details
+          ? `${error.error}\n\n${error.details}`
           : error.error || 'Failed to create Purchase Order';
         toast.showError(errorMessage);
         console.error('PO Creation Error:', error);
@@ -208,9 +236,9 @@ export default function JobOrderPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-2 sm:gap-4">
-              <img 
-                src="/logo.png" 
-                alt="ANJO WORLD" 
+              <img
+                src="/logo.png"
+                alt="ANJO WORLD"
                 className="h-10 w-10 sm:h-12 sm:w-12 object-contain"
               />
               <div>
@@ -238,10 +266,10 @@ export default function JobOrderPage() {
         {(() => {
           const userRole = currentUser?.role as string;
           const userDepartment = (currentUser as any)?.department;
-          
+
           // Helper to normalize department
           const normalizeDept = (dept: string | undefined) => (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
-          
+
           // Service Category to Department mapping
           const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
             'Technical Support': ['it'],
@@ -250,7 +278,7 @@ export default function JobOrderPage() {
             'General Inquiry': ['operations'],
             'Other': ['operations'],
           };
-          
+
           // Check if user is the handling department for this JO
           const isHandlingDept = (() => {
             const normalizedUserDept = normalizeDept(userDepartment);
@@ -259,15 +287,15 @@ export default function JobOrderPage() {
             if (!authorizedDepts) return normalizedUserDept === 'operations';
             return authorizedDepts.includes(normalizedUserDept);
           })();
-          
-          const isAuthorized = userRole === 'OPERATIONS' || 
-                              userRole === 'ADMIN' || 
-                              userRole === 'SUPER_ADMIN' ||
-                              userRole === 'FINANCE' ||
-                              userRole === 'DEPARTMENT_HEAD' ||
-                              isHandlingDept ||
-                              (userRole === 'APPROVER' && (normalizeDept(userDepartment) === 'operations' || normalizeDept(userDepartment) === 'finance'));
-          
+
+          const isAuthorized = userRole === 'OPERATIONS' ||
+            userRole === 'ADMIN' ||
+            userRole === 'SUPER_ADMIN' ||
+            userRole === 'FINANCE' ||
+            userRole === 'DEPARTMENT_HEAD' ||
+            isHandlingDept ||
+            (userRole === 'APPROVER' && (normalizeDept(userDepartment) === 'operations' || normalizeDept(userDepartment) === 'finance'));
+
           if (!isAuthorized && currentUser) {
             return (
               <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -287,20 +315,20 @@ export default function JobOrderPage() {
           }
           return null;
         })()}
-        
+
         {/* Show PO link or Create PO button for Material Requisition */}
         {(() => {
           const isMaterialRequisition = jobOrder.type === 'MATERIAL_REQUISITION';
           const hasMaterials = jobOrder.materials && jobOrder.materials.length > 0;
           const showPOSection = isMaterialRequisition || (!jobOrder.type && hasMaterials);
-          
+
           if (!showPOSection) {
             // Show info message for Service type JOs
             if (jobOrder.type === 'SERVICE') {
               return (
                 <div className="mb-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
                   <p className="text-sm text-gray-600">
-                    <span className="font-medium">Note:</span> Purchase Orders can only be created from <span className="font-medium">Material Requisition</span> type Job Orders. 
+                    <span className="font-medium">Note:</span> Purchase Orders can only be created from <span className="font-medium">Material Requisition</span> type Job Orders.
                     This is a <span className="font-medium">Service</span> type Job Order.
                   </p>
                 </div>
@@ -308,14 +336,14 @@ export default function JobOrderPage() {
             }
             return null;
           }
-          
+
           // Check if user is authorized to create Purchase Orders
           const userRole = currentUser?.role as string;
           const userDepartment = (currentUser as any)?.department;
-          const canCreatePO = userRole === 'ADMIN' || 
-                              userRole === 'SUPER_ADMIN' ||
-                              (userRole === 'APPROVER' && userDepartment === 'Purchasing');
-          
+          const canCreatePO = userRole === 'ADMIN' ||
+            userRole === 'SUPER_ADMIN' ||
+            (userRole === 'APPROVER' && userDepartment === 'Purchasing');
+
           // Check if budget has been approved (required for Material Requisition)
           const financeBudgetApproved = jobOrder.approvals?.some(
             (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
@@ -324,7 +352,7 @@ export default function JobOrderPage() {
             (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
           );
           const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
-          
+
           // Only show the card if user is authorized
           if (!canCreatePO) {
             return null;
@@ -350,7 +378,7 @@ export default function JobOrderPage() {
                   <div>
                     <p className="text-gray-900 font-medium">Ready to Create Purchase Order</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      {isMaterialRequisition 
+                      {isMaterialRequisition
                         ? budgetCleared
                           ? `This Material Requisition Job Order has ${jobOrder.materials?.length || 0} material(s) ready for purchase`
                           : 'Budget must be approved by Finance and President before Purchase Order can be created'
@@ -370,11 +398,10 @@ export default function JobOrderPage() {
                       setShowCreatePO(true);
                     }}
                     disabled={(jobOrder.type && !isMaterialRequisition) || (isMaterialRequisition && !budgetCleared)}
-                    className={`px-6 py-2 rounded-md font-medium shadow-sm ${
-                      (jobOrder.type && !isMaterialRequisition) || (isMaterialRequisition && !budgetCleared)
+                    className={`px-6 py-2 rounded-md font-medium shadow-sm ${(jobOrder.type && !isMaterialRequisition) || (isMaterialRequisition && !budgetCleared)
                         ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                         : 'bg-blue-600 text-white hover:bg-blue-700'
-                    }`}
+                      }`}
                   >
                     Create Purchase Order
                   </button>
@@ -384,14 +411,17 @@ export default function JobOrderPage() {
           );
         })()}
 
-            <JobOrderDetail
-              jobOrder={jobOrder}
-              currentUser={currentUser || undefined}
-              onApprove={handleApprove}
-              onStatusChange={handleStatusChange}
-              onBudgetUpdate={() => fetchJobOrder(params.id as string)}
-            />
+        <JobOrderDetail
+          jobOrder={jobOrder}
+          currentUser={currentUser || undefined}
+          onApprove={handleApprove}
+          onStatusChange={handleStatusChange}
+          onBudgetUpdate={() => fetchJobOrder(params.id as string)}
+        />
 
+        {/* Only show these panels if JO is NOT rejected */}
+        {jobOrder.status !== 'REJECTED' && (
+          <>
             {/* Material Transfer (Materials move to Maintenance) */}
             {jobOrder.type === 'MATERIAL_REQUISITION' && (
               <div className="mt-6">
@@ -423,6 +453,8 @@ export default function JobOrderPage() {
                 onAcceptanceUpdate={() => fetchJobOrder(params.id as string)}
               />
             </div>
+          </>
+        )}
 
         {/* Create PO Modal */}
         {showCreatePO && jobOrder && (

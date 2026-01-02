@@ -9,34 +9,41 @@ import { getServiceCategoriesForDepartment } from '@/lib/utils/joAuthorization';
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    
+
     // Get pagination and filter parameters
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '9', 10);
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const status = searchParams.get('status'); // Optional status filter
     const department = searchParams.get('department'); // Optional department filter
-    
+
     // Get current user if authenticated
     const authUser = getAuthUser(request);
-    
+
     // Helper to normalize department names
     const normalizeDept = (dept: string) => dept.toLowerCase().replace(/\s+department$/, '').trim();
-    
+
     // Build base query
     let query: any = {};
-    
+
     // Apply status filter if provided
-    if (status && status !== 'all') {
+    // By default, exclude CLOSED status unless explicitly requested
+    const includeClosed = searchParams.get('includeClosed') === 'true';
+    if (status === 'everything') {
+      // Don't filter by status at all
+    } else if (status && status !== 'all') {
       query.status = status;
+    } else {
+      // Exclude CLOSED and REJECTED status by default when no specific status is requested
+      query.status = { $nin: ['CLOSED', 'REJECTED'] };
     }
-    
+
     // Apply department filter if provided or if user is APPROVER with department
     let departmentFilter = department;
     if (!departmentFilter && authUser && authUser.role === 'APPROVER' && authUser.department) {
       departmentFilter = authUser.department;
     }
-    
+
     if (departmentFilter) {
       const userDeptNorm = normalizeDept(departmentFilter);
       // Special cases: Operations, Finance, Purchasing, and President should see ALL Job Orders
@@ -45,26 +52,26 @@ export async function GET(request: NextRequest) {
         // 1. Service category matches what this department handles (handling department view)
         // 2. OR requester's department matches user's department (requester's department head view)
         const serviceCategories = getServiceCategoriesForDepartment(departmentFilter);
-        
+
         const conditions: any[] = [];
-        
+
         // Condition 1: Service category matches what this department handles
         if (serviceCategories.length > 0) {
           conditions.push({ serviceCategory: { $in: serviceCategories } });
         }
-        
+
         // Condition 2: Requester's department matches user's department
         conditions.push({
           department: { $regex: new RegExp(`^${userDeptNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') }
         });
-        
+
         // Combine with $or
         if (conditions.length > 0) {
           query.$or = conditions;
         }
       }
     }
-    
+
     // Use aggregation to sort by status priority, then by createdAt, with pagination
     const pipeline: any[] = [
       { $match: query },
@@ -107,7 +114,7 @@ export async function GET(request: NextRequest) {
             {
               $match: {
                 $expr: {
-                  $eq: [{ $toString: '$_id' }, '$$srIdStr' ]
+                  $eq: [{ $toString: '$_id' }, '$$srIdStr']
                 }
               }
             }
@@ -169,13 +176,13 @@ export async function GET(request: NextRequest) {
         }
       }
     ];
-    
+
     // Count total matching documents (before pagination) - uses the filtered query
     const totalCount = await JobOrder.countDocuments(query);
-    
+
     // Get paginated results
     const jobOrders = await JobOrder.aggregate(pipeline);
-    
+
     // Transform to ensure serviceRequest is properly set
     const transformedJobOrders = jobOrders.map((jo: any) => {
       if (jo.serviceRequest) {
@@ -190,8 +197,8 @@ export async function GET(request: NextRequest) {
       }
       return jo;
     });
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       jobOrders: transformedJobOrders,
       totalCount,
       hasMore: skip + limit < totalCount
@@ -210,10 +217,10 @@ export async function POST(request: NextRequest) {
     await connectDB();
     const body: { srId: string; input?: CreateJobOrderInput } = await request.json();
     const { srId, input = {} as CreateJobOrderInput } = body;
-    
+
     // Get current user who is creating the Job Order
     const authUser = getAuthUser(request);
-    
+
     // Ensure type is provided, default to SERVICE if not
     const jobOrderType = input.type || 'SERVICE';
 
@@ -267,7 +274,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    
+
     // Log the type being set
     console.log('Creating Job Order:', {
       srId: sr._id.toString(),
@@ -303,16 +310,15 @@ export async function POST(request: NextRequest) {
         estimatedTotalCost: 0,
         budgetSource: sr.budgetSource || '',
         costCenter: sr.budgetSource || '',
-        withinApprovedBudget: false,
       },
       acceptance: {},
       approvals: [],
       status: 'DRAFT',
     });
-    
+
     // Explicitly set the type field using set() to ensure it's properly set
     (jobOrder as any).set('type', jobOrderType);
-    
+
     // Log before save to verify type is set
     const beforeSave = (jobOrder as any).toObject();
     console.log('Job Order before save:', {
@@ -322,17 +328,17 @@ export async function POST(request: NextRequest) {
       isModified: (jobOrder as any).isModified('type'),
       fullObject: JSON.stringify(beforeSave, null, 2)
     });
-    
+
     // Save the document
     await jobOrder.save();
-    
+
     // Force update the type field directly using updateOne to ensure it's saved
     // This is a workaround in case there's an issue with the initial save
     await JobOrder.updateOne(
       { _id: jobOrder._id },
       { $set: { type: jobOrderType } }
     );
-    
+
     // After save, verify it was saved by querying the database directly
     const verifySave = await JobOrder.findById(jobOrder._id).lean();
     console.log('After save verification:', {
@@ -341,14 +347,14 @@ export async function POST(request: NextRequest) {
       joNumber: (verifySave as any)?.joNumber,
       allFields: Object.keys(verifySave || {})
     });
-    
+
     // Reload the jobOrder object to get the updated type
     const savedJO = await JobOrder.findById(jobOrder._id);
     if (savedJO) {
       (savedJO as any).type = jobOrderType;
       await savedJO.save();
     }
-    
+
     // Final verification
     const finalCheck = await JobOrder.findById(jobOrder._id).lean();
     console.log('Final type check:', {
@@ -356,10 +362,10 @@ export async function POST(request: NextRequest) {
       expected: jobOrderType,
       match: (finalCheck as any)?.type === jobOrderType
     });
-    
+
     // Populate service request for response
     await jobOrder.populate('srId', 'srNumber requestedBy department');
-    
+
     // Notify relevant approvers about new Job Order
     const { notifyJobOrderCreated } = await import('@/lib/utils/notifications');
     await notifyJobOrderCreated(
@@ -369,7 +375,7 @@ export async function POST(request: NextRequest) {
       authUser?.name || 'Unknown User',
       authUser?.department || 'Unknown Department'
     );
-    
+
     return NextResponse.json({ jobOrder }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating job order:', error);

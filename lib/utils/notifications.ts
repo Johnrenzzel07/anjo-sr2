@@ -484,6 +484,46 @@ export async function notifyJobOrderStatusChanged(
 }
 
 /**
+ * Notify President when Purchase Order needs approval
+ */
+export async function notifyPurchaseOrderNeedsApproval(
+  purchaseOrderId: string,
+  poNumber: string,
+  creatorName?: string,
+  creatorDepartment?: string
+) {
+  try {
+    // Notify President (SUPER_ADMIN, ADMIN - these have MANAGEMENT role in approvals)
+    const superAdminIds = await findUsersByRole('SUPER_ADMIN');
+    const adminIds = await findUsersByRole('ADMIN');
+    const userIds = [...new Set([...superAdminIds, ...adminIds])];
+
+    if (userIds.length === 0) {
+      console.warn('No President users found for Purchase Order approval');
+      return;
+    }
+
+    // Format creator information
+    const creatorInfo = creatorName && creatorDepartment 
+      ? ` by ${creatorName} (${creatorDepartment})`
+      : creatorName 
+      ? ` by ${creatorName}`
+      : '';
+
+    await createNotificationsForUsers(userIds, {
+      type: 'PURCHASE_ORDER_NEEDS_APPROVAL',
+      title: `Purchase Order Needs Approval: ${poNumber}`,
+      message: `Purchase Order ${poNumber} has been submitted${creatorInfo} and requires your approval.`,
+      link: `/purchase-orders/${purchaseOrderId}`,
+      relatedEntityType: 'PURCHASE_ORDER',
+      relatedEntityId: purchaseOrderId,
+    });
+  } catch (error) {
+    console.error('Error notifying purchase order needs approval:', error);
+  }
+}
+
+/**
  * Notify requester's department head when Job Order execution is completed
  */
 export async function notifyJobOrderExecutionCompleted(

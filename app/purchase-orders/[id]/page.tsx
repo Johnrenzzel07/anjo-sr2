@@ -60,10 +60,25 @@ export default function PurchaseOrderDetailPage() {
       const response = await fetch(`/api/purchase-orders/${params.id}`);
       if (response.ok) {
         const data = await response.json();
-        setPurchaseOrder({
+        const po = {
           ...data.purchaseOrder,
           id: data.purchaseOrder._id?.toString() || data.purchaseOrder.id,
-        });
+        };
+        setPurchaseOrder(po);
+        
+        // Mark related notifications as read
+        try {
+          await fetch('/api/notifications/mark-read-by-entity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              relatedEntityType: 'PURCHASE_ORDER',
+              relatedEntityId: po.id || po._id?.toString(),
+            }),
+          });
+        } catch (notifError) {
+          console.error('Error marking notifications as read:', notifError);
+        }
       } else {
         toast.showError('Failed to fetch purchase order');
         router.push('/dashboard/admin');
@@ -363,7 +378,7 @@ export default function PurchaseOrderDetailPage() {
             </div>
           )}
 
-          {/* Approval Actions */}
+          {/* Actions */}
           <div className="mb-6 bg-white rounded-lg shadow-md p-6 border border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Actions</h2>
             
@@ -400,18 +415,15 @@ export default function PurchaseOrderDetailPage() {
                   Submit for Approval
                 </button>
                 <p className="text-xs text-gray-500 mt-2">
-                  Submit this Purchase Order to start the approval process (Finance → President)
+                  Submit this Purchase Order to start the approval process (President)
                 </p>
               </div>
             )}
 
-            {/* Approval Status and Buttons */}
+            {/* Approval Button (for SUBMITTED status) */}
             {(purchaseOrder.status === 'SUBMITTED' || purchaseOrder.status === 'APPROVED') && currentUser && (
               <div className="mb-4">
                 {(() => {
-                  const financeApproved = purchaseOrder.approvals?.some(
-                    (a: any) => a.role === 'FINANCE' && a.action === 'APPROVED'
-                  );
                   const presidentApproved = purchaseOrder.approvals?.some(
                     (a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED'
                   );
@@ -420,122 +432,69 @@ export default function PurchaseOrderDetailPage() {
                   );
                   
                   return (
-                    <div className="space-y-3">
-                      {/* Finance Approval */}
-                      <div className="p-3 rounded-md border">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-700">Finance Approval:</span>
-                          {financeApproved ? (
-                            <span className="text-sm text-green-600 font-medium">✓ Approved</span>
-                          ) : (
-                            <span className="text-sm text-yellow-600 font-medium">Pending</span>
-                          )}
-                        </div>
-                        {!financeApproved && (currentUser.role === 'FINANCE' || currentUser.department === 'Finance') && !userHasApproved && (
-                          <button
-                            onClick={async () => {
-                              const comments = await showApproval({
-                                title: 'Finance Approval',
-                                message: 'Please enter your approval comments for this Purchase Order.',
-                                confirmButtonText: 'Approve',
-                                confirmButtonColor: 'green',
-                                placeholder: 'Enter approval comments (optional)...',
-                              });
-                              if (comments === null) return; // User cancelled
+                    !presidentApproved && (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN') && !userHasApproved && (
+                      <button
+                        onClick={async () => {
+                          const comments = await showApproval({
+                            title: 'President Approval',
+                            message: 'Please enter your approval comments for this Purchase Order.',
+                            confirmButtonText: 'Approve',
+                            confirmButtonColor: 'green',
+                            placeholder: 'Enter approval comments (optional)...',
+                          });
+                          if (comments === null) return; // User cancelled
+                          try {
+                            const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}/approve`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                role: currentUser.role === 'SUPER_ADMIN' ? 'MANAGEMENT' : currentUser.role,
+                                userId: currentUser.id,
+                                userName: currentUser.name,
+                                action: 'APPROVED',
+                                comments: comments || '',
+                              }),
+                            });
+                            if (response.ok) {
+                              toast.showSuccess('Purchase Order approved by President!');
+                              
+                              // Mark related notifications as read after approval
                               try {
-                                const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}/approve`, {
+                                await fetch('/api/notifications/mark-read-by-entity', {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
-                                    role: 'FINANCE',
-                                    userId: currentUser.id,
-                                    userName: currentUser.name,
-                                    action: 'APPROVED',
-                                    comments: comments || '',
+                                    relatedEntityType: 'PURCHASE_ORDER',
+                                    relatedEntityId: purchaseOrder.id || purchaseOrder._id,
                                   }),
                                 });
-                                if (response.ok) {
-                                  toast.showSuccess('Purchase Order approved by Finance!');
-                                  fetchPurchaseOrder();
-                                } else {
-                                  const error = await response.json();
-                                  toast.showError(error.error || 'Failed to approve');
-                                }
-                              } catch (error) {
-                                console.error('Error approving:', error);
-                                toast.showError('Failed to approve Purchase Order');
+                              } catch (notifError) {
+                                console.error('Error marking notifications as read:', notifError);
                               }
-                            }}
-                            className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                          >
-                            Approve (Finance)
-                          </button>
-                        )}
-                      </div>
-
-                      {/* President Approval */}
-                      <div className="p-3 rounded-md border">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-700">President Approval:</span>
-                          {presidentApproved ? (
-                            <span className="text-sm text-green-600 font-medium">✓ Approved</span>
-                          ) : financeApproved ? (
-                            <span className="text-sm text-yellow-600 font-medium">Waiting for Approval</span>
-                          ) : (
-                            <span className="text-sm text-gray-500">Waiting for Finance approval first</span>
-                          )}
-                        </div>
-                        {financeApproved && !presidentApproved && (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN') && !userHasApproved && (
-                          <button
-                            onClick={async () => {
-                              const comments = await showApproval({
-                                title: 'President Approval',
-                                message: 'Please enter your approval comments for this Purchase Order.',
-                                confirmButtonText: 'Approve',
-                                confirmButtonColor: 'green',
-                                placeholder: 'Enter approval comments (optional)...',
-                              });
-                              if (comments === null) return; // User cancelled
-                              try {
-                                const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}/approve`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    role: currentUser.role === 'SUPER_ADMIN' ? 'MANAGEMENT' : currentUser.role,
-                                    userId: currentUser.id,
-                                    userName: currentUser.name,
-                                    action: 'APPROVED',
-                                    comments: comments || '',
-                                  }),
-                                });
-                                if (response.ok) {
-                                  toast.showSuccess('Purchase Order approved by President!');
-                                  fetchPurchaseOrder();
-                                } else {
-                                  const error = await response.json();
-                                  toast.showError(error.error || 'Failed to approve');
-                                }
-                              } catch (error) {
-                                console.error('Error approving:', error);
-                                toast.showError('Failed to approve Purchase Order');
-                              }
-                            }}
-                            className="px-3 py-1 bg-green-600 text-white rounded text-sm hover:bg-green-700"
-                          >
-                            Approve (President)
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                              
+                              fetchPurchaseOrder();
+                            } else {
+                              const error = await response.json();
+                              toast.showError(error.error || 'Failed to approve');
+                            }
+                          } catch (error) {
+                            console.error('Error approving:', error);
+                            toast.showError('Failed to approve Purchase Order');
+                          }
+                        }}
+                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
+                      >
+                        Approve (President)
+                      </button>
+                    )
                   );
                 })()}
               </div>
             )}
 
             {/* Post-Approval Actions: Mark as Purchased/Received */}
-            {/* Show this block when PO is fully approved, purchased, or received */}
-            {purchaseOrder.approvals?.some((a: any) => a.role === 'FINANCE' && a.action === 'APPROVED') &&
-             purchaseOrder.approvals?.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED') && 
+            {/* Show this block when PO is approved by President, purchased, or received */}
+            {purchaseOrder.approvals?.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED') && 
              (purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED' || purchaseOrder.status === 'RECEIVED' || purchaseOrder.status === 'CLOSED') && (
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <h3 className="text-md font-semibold text-gray-900 mb-3">Post-Approval Actions</h3>

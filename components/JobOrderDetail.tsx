@@ -3,6 +3,7 @@
 import { JobOrder, UserRole, ApprovalAction } from '@/types';
 import StatusBadge from './StatusBadge';
 import BudgetPanel from '@/components/BudgetPanel';
+import { useApprovalModal } from './useApprovalModal';
 
 // Service Category to Department mapping for JO approval
 const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
@@ -21,19 +22,19 @@ function normalizeDept(dept: string | undefined): string {
 // Check if user is the handling department for this service category
 function isHandlingDepartment(userDepartment: string | undefined, serviceCategory: string): boolean {
   const normalizedUserDept = normalizeDept(userDepartment);
-  
+
   // President can handle all
   if (normalizedUserDept === 'president') {
     return true;
   }
-  
+
   // Operations can also handle if they're in the authorized list
   const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
   if (!authorizedDepts) {
     // Default to operations for unknown categories
     return normalizedUserDept === 'operations';
   }
-  
+
   return authorizedDepts.includes(normalizedUserDept);
 }
 
@@ -53,8 +54,8 @@ interface JobOrderDetailProps {
   onBudgetUpdate?: () => void;
 }
 
-export default function JobOrderDetail({ 
-  jobOrder, 
+export default function JobOrderDetail({
+  jobOrder,
   currentUser,
   onApprove,
   onStatusChange,
@@ -112,30 +113,39 @@ export default function JobOrderDetail({
     return 'N/A';
   };
 
-  const canApprove = (action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED') => {
+  const canApprove = (action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED') => {
     if (!currentUser) return false;
-    
+
     const userRole = currentUser.role as string;
     const userDepartment = (currentUser as any).department as string;
-    
+
     // Check if user is the handling department for this JO's service category
     const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
-    
+
     // Check if user is President/Management (SUPER_ADMIN/ADMIN should be treated as MANAGEMENT)
     const isPresident = userRole === 'MANAGEMENT' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
-    
+
     const hasApproval = jobOrder.approvals.some(a => {
       // Check if user already approved with the SAME action
       if (isPresident && a.role === 'MANAGEMENT' && a.action === action) return true;
+      // Also check if user already approved budget (BUDGET_APPROVED) when checking for APPROVED action
+      // For SERVICE type with materials, if user already approved budget, they've effectively approved the JO
+      if (action === 'APPROVED' && isPresident && a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED') {
+        // Check by userId - if this approval matches the current user, they've already approved
+        if (a.userId === currentUser.id) return true;
+      }
       return a.role === currentUser.role && a.action === action;
     });
-    
+
     if (hasApproval) return false;
-    
+
+    // If already rejected, cannot approve or reject further
+    if (jobOrder.status === 'REJECTED') return false;
+
     const isServiceType = jobOrder.type === 'SERVICE';
     const hasMaterials = jobOrder.materials && jobOrder.materials.length > 0;
     const serviceNeedsBudget = isServiceType && hasMaterials;
-    
+
     // Check budget approval status
     const financeBudgetApproved = jobOrder.approvals.some(
       (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
@@ -144,7 +154,7 @@ export default function JobOrderDetail({
       (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
     );
     const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
-    
+
     switch (action) {
       case 'PREPARED':
         return isHandlingDept;
@@ -153,79 +163,106 @@ export default function JobOrderDetail({
       case 'NOTED':
         return userRole === 'FINANCE';
       case 'APPROVED':
+      case 'REJECTED':
         if (isServiceType) {
           // For Service type: Creating the JO counts as handling dept approval
-          // Only President needs to approve
+          // Only President needs to approve or reject
           if (!isPresident) {
-            return false; // Only President can approve Service type JOs
+            return false; // Only President can approve/reject Service type JOs
           }
-          // For Service type with materials: Budget must be approved first
-          if (serviceNeedsBudget) {
+          // For Service type with materials: Budget must be approved first (rejection can happen anytime though)
+          if (serviceNeedsBudget && action === 'APPROVED') {
             return budgetCleared;
           }
-          // For Service type without materials: President can approve directly
+          // For Service type without materials or for REJECTED action: President can act directly
           return true;
         }
-        // For Material Requisition: Budget must be approved first, then only Management can approve Job Order
+        // For Material Requisition: Budget must be approved first for APPROVED action,
+        // then only Management can approve or reject Job Order
         if (!isPresident) {
-          return false; // Only President can approve Material Requisition Job Orders
+          return false; // Only President can approve/reject Material Requisition Job Orders
         }
-        // President can only approve Job Order if budget has been cleared
+        // President can only approve Job Order if budget has been cleared, 
+        // but they can reject it anytime.
+        if (action === 'REJECTED') return true;
         return budgetCleared;
       default:
         return false;
     }
   };
 
-  const handleApprove = (action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED') => {
+  const { showApproval, ApprovalDialog } = useApprovalModal();
+
+  const handleApprove = async (action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED') => {
     if (!currentUser) return;
-    
+
+    // Show confirmation/comment modal
+    const comments = await showApproval({
+      title: action === 'REJECTED' ? 'Reject Job Order' : 'Approve Job Order',
+      message: action === 'REJECTED'
+        ? `Are you sure you want to reject ${jobOrder.joNumber}? Please provide a reason.`
+        : `Are you sure you want to approve ${jobOrder.joNumber}?`,
+      confirmButtonText: action === 'REJECTED' ? 'Reject' : 'Approve',
+      confirmButtonColor: action === 'REJECTED' ? 'red' : 'green',
+      placeholder: action === 'REJECTED' ? 'Enter rejection reason (required)...' : 'Enter comments (optional)...',
+      showComments: true,
+    });
+
+    if (comments === null) return; // User cancelled
+
+    if (action === 'REJECTED' && !comments.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+
     // Map roles for approvals:
     // - Handling department (based on service category) → DEPARTMENT_HEAD
     // - SUPER_ADMIN/ADMIN → MANAGEMENT (President)
     const userRole = currentUser.role as string;
     const userDepartment = (currentUser as any).department as string;
     let approvalRole = userRole;
-    
+
     // Check if user is the handling department for this JO's service category
     const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
-    
+
     if (isHandlingDept && userRole === 'APPROVER') {
       approvalRole = 'DEPARTMENT_HEAD';
     } else if (userRole === 'SUPER_ADMIN' || userRole === 'ADMIN') {
       approvalRole = 'MANAGEMENT';
     }
-    
+
     onApprove?.({
       role: approvalRole as any,
       userId: currentUser.id,
       userName: currentUser.name,
       action,
+      comments: comments || '',
     });
   };
 
   // Different timelines for Service vs Material Requisition
   const isServiceType = jobOrder.type === 'SERVICE';
-  const statusTimeline = isServiceType 
+  const statusTimeline = isServiceType
     ? [
-        // Service type timeline
-        { status: 'DRAFT', label: 'Draft', condition: jobOrder.status !== 'DRAFT' },
-        { status: 'APPROVED', label: 'Approved', condition: ['APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
-        { status: 'IN_PROGRESS', label: 'In Progress', condition: ['IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
-        { status: 'COMPLETED', label: 'Completed', condition: ['COMPLETED', 'CLOSED'].includes(jobOrder.status) },
-        { status: 'CLOSED', label: 'Closed', condition: jobOrder.status === 'CLOSED' },
-      ]
+      // Service type timeline
+      { status: 'DRAFT', label: 'Draft', condition: ['DRAFT', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      { status: 'APPROVED', label: 'Approved', condition: ['APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      { status: 'IN_PROGRESS', label: 'In Progress', condition: ['IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      { status: 'COMPLETED', label: 'Completed', condition: ['COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      { status: 'CLOSED', label: 'Closed', condition: jobOrder.status === 'CLOSED' },
+    ]
     : [
-        // Material Requisition type timeline
-        { status: 'DRAFT', label: 'Draft', condition: jobOrder.status !== 'DRAFT' },
-        { status: 'APPROVED', label: 'Approved', condition: ['BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
-        { status: 'IN_PROGRESS', label: 'In Progress', condition: ['IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
-        { status: 'COMPLETED', label: 'Completed', condition: ['COMPLETED', 'CLOSED'].includes(jobOrder.status) },
-        { status: 'CLOSED', label: 'Closed', condition: jobOrder.status === 'CLOSED' },
-      ];
+      // Material Requisition type timeline
+      { status: 'DRAFT', label: 'Draft', condition: ['DRAFT', 'BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      { status: 'APPROVED', label: 'Approved', condition: ['BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      { status: 'IN_PROGRESS', label: 'In Progress', condition: ['IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      { status: 'COMPLETED', label: 'Completed', condition: ['COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      { status: 'CLOSED', label: 'Closed', condition: jobOrder.status === 'CLOSED' },
+    ];
 
   return (
     <div className="space-y-6">
+      <ApprovalDialog />
       {/* Header */}
       <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4">
@@ -245,9 +282,8 @@ export default function JobOrderDetail({
             {statusTimeline.map((step, index) => (
               <div key={step.status} className="flex items-center flex-shrink-0">
                 <div className={`flex flex-col items-center ${step.condition ? 'text-blue-600' : 'text-gray-400'}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                    step.condition ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
-                  }`}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${step.condition ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+                    }`}>
                     {index + 1}
                   </div>
                   <span className="text-xs mt-1 whitespace-nowrap">{step.label}</span>
@@ -433,7 +469,7 @@ export default function JobOrderDetail({
       {/* Approvals Section */}
       <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
         <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">Approvals</h2>
-        
+
         {/* Existing Approvals */}
         {jobOrder.approvals && jobOrder.approvals.length > 0 && (
           <div className="mb-4 space-y-2">
@@ -444,11 +480,10 @@ export default function JobOrderDetail({
                   <span className="text-gray-500 ml-2">({approval.role})</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`text-sm font-medium ${
-                    approval.action === 'APPROVED' || approval.action === 'BUDGET_APPROVED' ? 'text-green-600' :
+                  <span className={`text-sm font-medium ${approval.action === 'APPROVED' || approval.action === 'BUDGET_APPROVED' ? 'text-green-600' :
                     approval.action === 'REJECTED' || approval.action === 'BUDGET_REJECTED' ? 'text-red-600' :
-                    'text-blue-600'
-                  }`}>
+                      'text-blue-600'
+                    }`}>
                     {approval.action}
                   </span>
                   <span className="text-xs text-gray-500">
@@ -462,14 +497,22 @@ export default function JobOrderDetail({
 
         {/* Service Type Approval Status */}
         {jobOrder.type === 'SERVICE' && (
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+          <div className={`mb-4 p-3 border rounded-md ${jobOrder.status === 'REJECTED'
+              ? 'bg-red-50 border-red-200'
+              : jobOrder.approvals.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED')
+                ? 'bg-green-50 border-green-200'
+                : 'bg-blue-50 border-blue-200'
+            }`}>
             {(() => {
               const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
-              const presidentApproved = jobOrder.approvals.some((a: any) => 
+              const presidentApproved = jobOrder.approvals.some((a: any) =>
                 a.role === 'MANAGEMENT' && a.action === 'APPROVED'
               );
-              
-              if (presidentApproved) {
+              const isRejected = jobOrder.status === 'REJECTED';
+
+              if (isRejected) {
+                return <p className="text-sm text-red-700 font-medium">✕ Rejected by President - This Job Order will not proceed</p>;
+              } else if (presidentApproved) {
                 return <p className="text-sm text-green-700 font-medium">✓ Approved by {handlingDeptName} Department (via creation) and President - Ready for execution</p>;
               } else {
                 return <p className="text-sm text-blue-700">✓ Approved by {handlingDeptName} Department (via creation) - Waiting for President approval</p>;
@@ -479,13 +522,21 @@ export default function JobOrderDetail({
         )}
 
         {/* Approval Actions - simplified to only Approve */}
-        <div className="space-y-2">
+        <div className="flex gap-2">
           {canApprove('APPROVED') && (
             <button
               onClick={() => handleApprove('APPROVED')}
-              className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium text-sm sm:text-base"
+              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium text-sm sm:text-base"
             >
               Approve (President)
+            </button>
+          )}
+          {canApprove('REJECTED') && (
+            <button
+              onClick={() => handleApprove('REJECTED')}
+              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm sm:text-base"
+            >
+              Reject (President)
             </button>
           )}
         </div>
@@ -497,7 +548,10 @@ export default function JobOrderDetail({
               const userDepartment = (currentUser as any)?.department;
               const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
               const isPresident = userRole === 'MANAGEMENT' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
-              
+
+              if (jobOrder.status === 'REJECTED') {
+                return 'This Job Order has been rejected.';
+              }
               if (jobOrder.approvals && jobOrder.approvals.length > 0) {
                 // Check if it's Material Requisition and budget not cleared
                 if (jobOrder.type === 'MATERIAL_REQUISITION') {
@@ -508,19 +562,19 @@ export default function JobOrderDetail({
                     (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
                   );
                   const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
-                  
+
                   if (!budgetCleared) {
                     return 'Budget must be approved by Finance and President before Job Order can be approved.';
                   }
                 }
                 return 'You have already provided your approval or no further approvals are needed.';
               }
-              
+
               // For SERVICE type: Handling department created it, now waiting for President
-              if (jobOrder.type === 'SERVICE' && isHandlingDept && !isPresident) {
+              if (jobOrder.type === 'SERVICE' && isHandlingDept && !isPresident && jobOrder.status !== 'REJECTED') {
                 return 'This Job Order is waiting for President approval. Once approved, you can start execution.';
               }
-              
+
               return 'No approval actions available for your role.';
             })()}
           </p>

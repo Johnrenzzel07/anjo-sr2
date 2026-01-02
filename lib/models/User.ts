@@ -25,6 +25,7 @@ export interface IUser {
   name: string;
   role: UserRole;
   department?: Department;
+  phone?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -56,6 +57,10 @@ const UserSchema = new Schema<IUser>({
     type: String,
     enum: ['Maintenance', 'IT Department', 'IT', 'Belmont One', 'Operations', 'HR', 'Sales', 'Finance', 'Accounting', 'Marketing', 'Purchasing', 'General Services', 'President', 'Other'],
     required: true,
+  },
+  phone: {
+    type: String,
+    required: false,
   },
   isActive: {
     type: Boolean,

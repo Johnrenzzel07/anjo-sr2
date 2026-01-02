@@ -15,7 +15,6 @@ export default function PurchaseOrderCard({ purchaseOrder, currentUser }: Purcha
     : 'N/A';
 
   // Check if current user can approve
-  const isFinance = currentUser?.department === 'Finance' || currentUser?.role === 'FINANCE';
   const isManagement = currentUser?.role === 'MANAGEMENT' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
 
   // Check if Purchase Order needs approval (for visual highlight - show even if user can approve)
@@ -23,54 +22,38 @@ export default function PurchaseOrderCard({ purchaseOrder, currentUser }: Purcha
     if (purchaseOrder.status === 'CLOSED' || purchaseOrder.status === 'REJECTED') return false;
     if (purchaseOrder.status === 'DRAFT') return false; // Draft doesn't need approval yet
     
-    const financeApproved = purchaseOrder.approvals?.some((a: any) => 
-      a.role === 'FINANCE' && a.action === 'APPROVED'
-    );
     const managementApproved = purchaseOrder.approvals?.some((a: any) => 
       a.role === 'MANAGEMENT' && a.action === 'APPROVED'
     );
 
-    // Needs Finance approval first, then Management
-    return !financeApproved || !managementApproved;
+    // Needs Management (President) approval
+    return !managementApproved;
   })();
 
   // Check if current user needs to approve (for different highlight color)
   const needsUserApproval = (() => {
     if (purchaseOrder.status === 'CLOSED' || purchaseOrder.status === 'REJECTED' || purchaseOrder.status === 'DRAFT') return false;
     
-    const financeApproved = purchaseOrder.approvals?.some((a: any) => 
-      a.role === 'FINANCE' && a.action === 'APPROVED'
-    );
     const managementApproved = purchaseOrder.approvals?.some((a: any) => 
       a.role === 'MANAGEMENT' && a.action === 'APPROVED'
     );
 
-    // Finance needs to approve first
-    if (!financeApproved && isFinance) return true;
-    // Management needs to approve after Finance
-    if (!managementApproved && isManagement && financeApproved) return true;
+    // Management (President) needs to approve
+    if (!managementApproved && isManagement) return true;
     return false;
   })();
 
   const approvalMessage = (() => {
     if (purchaseOrder.status === 'CLOSED' || purchaseOrder.status === 'REJECTED' || purchaseOrder.status === 'DRAFT') return '';
     
-    const financeApproved = purchaseOrder.approvals?.some((a: any) => 
-      a.role === 'FINANCE' && a.action === 'APPROVED'
-    );
     const managementApproved = purchaseOrder.approvals?.some((a: any) => 
       a.role === 'MANAGEMENT' && a.action === 'APPROVED'
     );
 
-    if (!financeApproved) {
-      // Don't show warning to Finance users - they can approve
-      if (isFinance) return '';
-      return 'Waiting for Finance approval';
-    }
     if (!managementApproved) {
       // Don't show warning to Management users - they can approve
       if (isManagement) return '';
-      return 'Waiting for Management approval';
+      return 'Waiting for President approval';
     }
     return '';
   })();

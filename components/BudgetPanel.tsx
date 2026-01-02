@@ -14,16 +14,16 @@ interface BudgetPanelProps {
 export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: BudgetPanelProps) {
   const toast = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+  const formatCurrency = (value: number) =>
+    value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const [loading, setLoading] = useState(false);
   const [estimatedTotalCost, setEstimatedTotalCost] = useState(
     jobOrder.budget?.estimatedTotalCost || 0
   );
-  const [withinApprovedBudget, setWithinApprovedBudget] = useState(
-    jobOrder.budget?.withinApprovedBudget || false
+  const [costInputValue, setCostInputValue] = useState(
+    jobOrder.budget?.estimatedTotalCost ? formatCurrency(jobOrder.budget.estimatedTotalCost) : ''
   );
-
-  const formatCurrency = (value: number) =>
-    value.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Calculate estimated cost from materials and outsource price
   useEffect(() => {
@@ -44,6 +44,7 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
     
     if (calculated > 0 && !jobOrder.budget?.estimatedTotalCost) {
       setEstimatedTotalCost(calculated);
+      setCostInputValue(formatCurrency(calculated));
     }
   }, [jobOrder.materials, jobOrder.manpower?.outsourcePrice, jobOrder.budget?.estimatedTotalCost]);
 
@@ -98,7 +99,6 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           estimatedTotalCost: parseFloat(estimatedTotalCost.toString()) || 0,
-          withinApprovedBudget,
           action: 'APPROVE',
         }),
       });
@@ -224,11 +224,58 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
             <span className="text-gray-500">₱</span>
             <input
               type="text"
-              value={formatCurrency(estimatedTotalCost)}
+              value={costInputValue}
               onChange={(e) => {
-                const raw = e.target.value.replace(/,/g, '');
-                const num = parseFloat(raw);
-                setEstimatedTotalCost(isNaN(num) ? 0 : num);
+                // Remove peso symbol, spaces, and allow only numbers, commas, and decimal point
+                let cleaned = e.target.value.replace(/[₱\s]/g, '').replace(/[^0-9,.]/g, '');
+                
+                // Remove all commas first to work with raw number
+                cleaned = cleaned.replace(/,/g, '');
+                
+                // Only allow one decimal point
+                const parts = cleaned.split('.');
+                let integerPart = parts[0] || '';
+                let decimalPart = parts.length > 1 ? parts[1] : '';
+                
+                // Remove leading zeros but keep at least one digit
+                if (integerPart.length > 1) {
+                  integerPart = integerPart.replace(/^0+/, '') || '0';
+                }
+                
+                // Limit decimal part to 2 digits
+                if (decimalPart.length > 2) {
+                  decimalPart = decimalPart.slice(0, 2);
+                }
+                
+                // Format integer part with commas
+                let formatted = '';
+                if (integerPart) {
+                  formatted = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+                }
+                
+                // Add decimal part if exists
+                if (parts.length > 1 && decimalPart !== '') {
+                  formatted = formatted ? `${formatted}.${decimalPart}` : `0.${decimalPart}`;
+                } else if (parts.length > 1 && decimalPart === '' && formatted) {
+                  // User just typed decimal point
+                  formatted = `${formatted}.`;
+                }
+                
+                // Update display value
+                setCostInputValue(formatted);
+                
+                // Parse back to number for storage
+                const numStr = cleaned === '' ? '0' : cleaned;
+                const numValue = numStr === '' ? 0 : parseFloat(numStr);
+                setEstimatedTotalCost(isNaN(numValue) || numValue < 0 ? 0 : numValue);
+              }}
+              onBlur={() => {
+                // On blur, ensure the value is properly formatted with decimals
+                if (estimatedTotalCost > 0) {
+                  setCostInputValue(formatCurrency(estimatedTotalCost));
+                } else {
+                  setCostInputValue('');
+                }
               }}
               disabled={!canActuallyEditBudget || budgetCleared}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
@@ -236,7 +283,10 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
             {calculatedCost > 0 && estimatedTotalCost !== calculatedCost && (
               <button
                 type="button"
-                onClick={() => setEstimatedTotalCost(calculatedCost)}
+                onClick={() => {
+                  setEstimatedTotalCost(calculatedCost);
+                  setCostInputValue(formatCurrency(calculatedCost));
+                }}
                 className="text-xs text-blue-600 hover:text-blue-800 underline"
                 disabled={!canActuallyEditBudget || budgetCleared}
               >
@@ -249,22 +299,6 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
               Calculated from materials{jobOrder.manpower?.outsourcePrice ? ' and outsource' : ''}: ₱{formatCurrency(calculatedCost)}
             </p>
           )}
-        </div>
-
-        {/* Within Approved Budget */}
-        <div>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={withinApprovedBudget}
-              onChange={(e) => setWithinApprovedBudget(e.target.checked)}
-              disabled={!canActuallyEditBudget || budgetCleared}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
-            />
-            <span className="text-sm font-medium text-gray-700">
-              Within Approved Budget
-            </span>
-          </label>
         </div>
 
         {/* Budget Approvals - Show when budget approval is needed */}

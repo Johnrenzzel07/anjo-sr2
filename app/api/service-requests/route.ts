@@ -1,44 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import ServiceRequest from '@/lib/models/ServiceRequest';
+import JobOrder from '@/lib/models/JobOrder';
+import mongoose from 'mongoose';
 import { getAuthUser } from '@/lib/auth';
 import { getServiceCategoriesForDepartment } from '@/lib/utils/joAuthorization';
 
 export async function GET(request: NextRequest) {
   try {
     await connectDB();
-    
+
     // Get pagination and filter parameters
     const searchParams = request.nextUrl.searchParams;
     const limit = parseInt(searchParams.get('limit') || '9', 10);
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const status = searchParams.get('status'); // Optional status filter
     const department = searchParams.get('department'); // Optional department filter (for filtering by service category)
-    
+
     // Get current user if authenticated
     const authUser = getAuthUser(request);
-    
+
     // Build base query
     let query: any = {};
-    
-    // If user is a requester, filter by their email or name
+
+    // If user is a requester, filter by their email, name, or department
     if (authUser && authUser.role === 'REQUESTER') {
       const userEmail = (authUser.email || '').trim().toLowerCase();
       const userName = (authUser.name || '').trim().toLowerCase();
-      
-      query = {
-        $or: [
-          { contactEmail: { $regex: new RegExp(`^${userEmail}$`, 'i') } },
-          { requestedBy: { $regex: new RegExp(`^${userName}$`, 'i') } }
-        ]
-      };
+      const userDepartment = (authUser.department || '').trim().toLowerCase();
+
+      const requesterConditions: any[] = [];
+
+      // Match by exact email
+      if (userEmail) {
+        requesterConditions.push({ contactEmail: { $regex: new RegExp(`^${userEmail}$`, 'i') } });
+      }
+
+      // Match by exact name
+      if (userName) {
+        requesterConditions.push({ requestedBy: { $regex: new RegExp(`^${userName}$`, 'i') } });
+        // Also match if requestedBy contains the user's name
+        requesterConditions.push({ requestedBy: { $regex: new RegExp(userName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') } });
+      }
+
+      // Match by department (users can see all SRs from their department)
+      if (userDepartment) {
+        requesterConditions.push({ department: { $regex: new RegExp(`^${userDepartment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') } });
+      }
+
+      if (requesterConditions.length > 0) {
+        query.$or = requesterConditions;
+      }
     }
-    
-    // Apply status filter if provided
-    if (status && status !== 'all') {
+
+    if (status === 'everything') {
+      // Don't filter by status at all - used for absolute total counts
+    } else if (status && status !== 'all') {
       query.status = status;
+    } else if (authUser && authUser.role === 'REQUESTER') {
+      // For REQUESTER: Show all their requests including REJECTED (but not DRAFT)
+      query.status = { $nin: ['DRAFT'] };
+    } else {
+      // DEFAULT VIEW for admins/approvers: Exclude REJECTED and DRAFT status
+      // This ensures they only appear when specifically filtered
+      query.status = { $nin: ['REJECTED', 'DRAFT'] };
     }
-    
+
     // For APPROVER role, show:
     // 1. SUBMITTED SRs from their own department (for approval)
     // 2. APPROVED SRs that match their handling service category (for JO creation)
@@ -46,15 +73,15 @@ export async function GET(request: NextRequest) {
       const normalizeDept = (dept: string) => dept.toLowerCase().replace(/\s+department$/, '').trim();
       const deptNorm = normalizeDept(department);
       const serviceCategories = getServiceCategoriesForDepartment(department);
-      
+
       // Build OR query: own department's SRs OR approved SRs they can create JO for
       const deptConditions: any[] = [];
-      
+
       // Condition 1: SRs from their own department (for approval)
       deptConditions.push({
         department: { $regex: new RegExp(`^${deptNorm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\s+department)?$`, 'i') }
       });
-      
+
       // Condition 2: APPROVED SRs with service categories they handle (for JO creation)
       if (serviceCategories.length > 0) {
         deptConditions.push({
@@ -62,7 +89,7 @@ export async function GET(request: NextRequest) {
           serviceCategory: { $in: serviceCategories }
         });
       }
-      
+
       // Combine with $or
       if (query.$or) {
         // If there's already an $or (from REQUESTER filter), use $and
@@ -71,10 +98,36 @@ export async function GET(request: NextRequest) {
         query.$or = deptConditions;
       }
     }
-    
+
+    // Get Service Request IDs that already have Job Orders
+    // Only exclude SRs with Job Orders when viewing "All Status" (no specific status filter)
+    // When a specific status is selected, show all SRs with that status (including ones with Job Orders)
+    const excludeHasJO = searchParams.get('excludeHasJO') !== 'false' && (!status || status === 'all');
+    let srIdsWithJO: mongoose.Types.ObjectId[] = [];
+    if (excludeHasJO) {
+      const jobOrders = await JobOrder.find({}, { srId: 1 }).lean();
+      srIdsWithJO = jobOrders
+        .map(jo => {
+          const srId = (jo as any).srId;
+          if (!srId) return null;
+          try {
+            return typeof srId === 'string' ? new mongoose.Types.ObjectId(srId) : srId;
+          } catch {
+            return null;
+          }
+        })
+        .filter((id): id is mongoose.Types.ObjectId => id !== null);
+    }
+
     // Use aggregation to sort by status priority (SUBMITTED first), then by createdAt
     const pipeline: any[] = [
       { $match: query },
+      // Exclude Service Requests that already have Job Orders (only when viewing all statuses)
+      ...(excludeHasJO && srIdsWithJO.length > 0 ? [{
+        $match: {
+          _id: { $nin: srIdsWithJO }
+        }
+      }] : []),
       {
         $addFields: {
           statusPriority: {
@@ -94,13 +147,19 @@ export async function GET(request: NextRequest) {
       { $skip: skip },
       { $limit: limit }
     ];
-    
+
+    // Build count query with same exclusions
+    let countQuery: any = { ...query };
+    if (excludeHasJO && srIdsWithJO.length > 0) {
+      countQuery._id = { $nin: srIdsWithJO };
+    }
+
     const [serviceRequests, totalCount] = await Promise.all([
       ServiceRequest.aggregate(pipeline),
-      ServiceRequest.countDocuments(query)
+      ServiceRequest.countDocuments(countQuery)
     ]);
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       serviceRequests,
       totalCount,
       hasMore: skip + limit < totalCount
@@ -118,11 +177,11 @@ export async function POST(request: Request) {
   try {
     await connectDB();
     const body = await request.json();
-    
+
     // Set default date if not provided
     const dateOfRequest = body.dateOfRequest || new Date().toISOString().split('T')[0];
     const timeOfRequest = body.timeOfRequest || new Date().toTimeString().slice(0, 5);
-    
+
     const serviceRequest = new ServiceRequest({
       requestedBy: body.requestedBy,
       department: body.department,
@@ -142,7 +201,7 @@ export async function POST(request: Request) {
     });
 
     await serviceRequest.save();
-    
+
     // Notify the HANDLING Department Head about new Service Request (based on service category)
     const { notifyServiceRequestSubmitted } = await import('@/lib/utils/notifications');
     await notifyServiceRequestSubmitted(
@@ -152,7 +211,7 @@ export async function POST(request: Request) {
       serviceRequest.department,
       serviceRequest.serviceCategory // Pass service category to notify the correct handling department
     );
-    
+
     return NextResponse.json({ serviceRequest }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating service request:', error);

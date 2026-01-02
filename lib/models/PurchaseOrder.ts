@@ -30,7 +30,7 @@ const ApprovalSchema = new Schema({
   userName: String,
   action: {
     type: String,
-    enum: ['PREPARED', 'REVIEWED', 'NOTED', 'APPROVED'],
+    enum: ['PREPARED', 'REVIEWED', 'NOTED', 'APPROVED', 'REJECTED', 'SUBMITTED'],
   },
   timestamp: String,
   comments: String,
@@ -132,7 +132,7 @@ const PurchaseOrderSchema = new Schema<IPurchaseOrder>({
 });
 
 // Auto-generate PO Number before save
-PurchaseOrderSchema.pre('save', async function() {
+PurchaseOrderSchema.pre('save', async function () {
   if (this.isNew && !this.poNumber) {
     const year = new Date().getFullYear();
     const count = await mongoose.model('PurchaseOrder').countDocuments({});
@@ -141,12 +141,11 @@ PurchaseOrderSchema.pre('save', async function() {
   this.updatedAt = new Date().toISOString();
 });
 
-let PurchaseOrder: mongoose.Model<IPurchaseOrder>;
-if (models.PurchaseOrder) {
-  PurchaseOrder = models.PurchaseOrder as mongoose.Model<IPurchaseOrder>;
-} else {
-  PurchaseOrder = model<IPurchaseOrder>('PurchaseOrder', PurchaseOrderSchema);
+// Forcefully clear the model cache in development to ensure enum updates are picked up
+if (process.env.NODE_ENV === 'development' && models.PurchaseOrder) {
+  delete (models as any).PurchaseOrder;
 }
 
+const PurchaseOrder = models.PurchaseOrder || model<IPurchaseOrder>('PurchaseOrder', PurchaseOrderSchema);
 export default PurchaseOrder;
 

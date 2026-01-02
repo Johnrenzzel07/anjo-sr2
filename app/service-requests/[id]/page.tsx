@@ -30,6 +30,20 @@ export default function ServiceRequestDetailPage() {
           sr.id = sr._id.toString();
         }
         setServiceRequest(sr);
+        
+        // Mark related notifications as read
+        try {
+          await fetch('/api/notifications/mark-read-by-entity', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              relatedEntityType: 'SERVICE_REQUEST',
+              relatedEntityId: sr.id || sr._id?.toString(),
+            }),
+          });
+        } catch (notifError) {
+          console.error('Error marking notifications as read:', notifError);
+        }
       } else {
         console.error('Failed to fetch Service Request');
       }

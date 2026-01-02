@@ -102,7 +102,7 @@ export default function RequesterDashboard() {
         setServiceRequests([]);
         setHasMore(true);
       }
-      
+
       const currentSkip = reset ? 0 : skip;
       const response = await fetch(`/api/service-requests?limit=9&skip=${currentSkip}`);
       if (response.ok) {
@@ -112,17 +112,25 @@ export default function RequesterDashboard() {
         const userRequests = (data.serviceRequests || []).filter((sr: any) => {
           const srRequestedBy = (sr.requestedBy || '').trim().toLowerCase();
           const srContactEmail = (sr.contactEmail || '').trim().toLowerCase();
+          const srDepartment = (sr.department || '').trim().toLowerCase();
           const userName = (user?.name || '').trim().toLowerCase();
           const userEmail = (user?.email || '').trim().toLowerCase();
-          
-          return srRequestedBy === userName || srContactEmail === userEmail;
+          const userDepartment = (user?.department || '').trim().toLowerCase();
+
+          // Match by name, email, or if the SR department matches the user's department
+          // (for cases where users in a department can see all department requests)
+          return srRequestedBy === userName ||
+            srContactEmail === userEmail ||
+            srRequestedBy.includes(userName) ||
+            userName.includes(srRequestedBy) ||
+            (userDepartment && srDepartment === userDepartment);
         });
         // Normalize MongoDB _id
         const normalized = userRequests.map((sr: any) => ({
           ...sr,
           id: sr._id?.toString() || sr.id,
         }));
-        
+
         if (reset) {
           setServiceRequests(normalized);
         } else {
@@ -133,12 +141,12 @@ export default function RequesterDashboard() {
             return [...prev, ...newItems];
           });
         }
-        
+
         // Use actual fetched count from API for pagination, not filtered count
         const fetchedCount = data.serviceRequests?.length || 0;
         setHasMore(data.hasMore && fetchedCount === 9);
         setSkip(currentSkip + fetchedCount);
-        
+
         // Refresh related data when service requests are fetched
         if (reset) {
           fetchRelatedData();
@@ -158,32 +166,38 @@ export default function RequesterDashboard() {
     try {
       const currentSkip = skip;
       const response = await fetch(`/api/service-requests?limit=9&skip=${currentSkip}`);
-      
+
       if (response.ok) {
         const data = await response.json();
         // Filter to show only requester's own requests
         const userRequests = (data.serviceRequests || []).filter((sr: any) => {
           const srRequestedBy = (sr.requestedBy || '').trim().toLowerCase();
           const srContactEmail = (sr.contactEmail || '').trim().toLowerCase();
+          const srDepartment = (sr.department || '').trim().toLowerCase();
           const userName = (user?.name || '').trim().toLowerCase();
           const userEmail = (user?.email || '').trim().toLowerCase();
-          
-          return srRequestedBy === userName || srContactEmail === userEmail;
+          const userDepartment = (user?.department || '').trim().toLowerCase();
+
+          return srRequestedBy === userName ||
+            srContactEmail === userEmail ||
+            srRequestedBy.includes(userName) ||
+            userName.includes(srRequestedBy) ||
+            (userDepartment && srDepartment === userDepartment);
         });
-        
+
         // Normalize MongoDB _id
         const normalized = userRequests.map((sr: any) => ({
           ...sr,
           id: sr._id?.toString() || sr.id,
         }));
-        
+
         // Always append new items (never replace)
-         setServiceRequests(prev => {
-           const existingIds = new Set(prev.map(sr => sr.id || sr._id?.toString()));
-           const newItems = normalized.filter((sr: ServiceRequest) => !existingIds.has(sr.id || sr._id?.toString()));
-           return [...prev, ...newItems];
-         });
-        
+        setServiceRequests(prev => {
+          const existingIds = new Set(prev.map(sr => sr.id || sr._id?.toString()));
+          const newItems = normalized.filter((sr: ServiceRequest) => !existingIds.has(sr.id || sr._id?.toString()));
+          return [...prev, ...newItems];
+        });
+
         // Update pagination state
         const fetchedCount = data.serviceRequests?.length || 0;
         setHasMore(data.hasMore && fetchedCount === 9);
@@ -248,9 +262,9 @@ export default function RequesterDashboard() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between gap-2 sm:gap-4 flex-wrap">
             <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-              <img 
-                src="/logo.png" 
-                alt="ANJO WORLD" 
+              <img
+                src="/logo.png"
+                alt="ANJO WORLD"
                 className="h-10 w-10 sm:h-12 sm:w-12 md:h-16 md:w-16 object-contain flex-shrink-0"
               />
               <div className="min-w-0 flex-1">
@@ -344,126 +358,125 @@ export default function RequesterDashboard() {
             </div>
           </div>
           {(() => {
-            const filteredSRs = searchQuery.trim() 
+            const filteredSRs = searchQuery.trim()
               ? serviceRequests.filter((sr) => {
-                  const query = searchQuery.toLowerCase().trim();
-                  return (
-                    sr.srNumber?.toLowerCase().includes(query) ||
-                    sr.department?.toLowerCase().includes(query) ||
-                    sr.serviceCategory?.toLowerCase().includes(query) ||
-                    sr.workDescription?.toLowerCase().includes(query) ||
-                    sr.briefSubject?.toLowerCase().includes(query) ||
-                    sr.status?.toLowerCase().includes(query) ||
-                    sr.priority?.toLowerCase().includes(query)
-                  );
-                })
+                const query = searchQuery.toLowerCase().trim();
+                return (
+                  sr.srNumber?.toLowerCase().includes(query) ||
+                  sr.department?.toLowerCase().includes(query) ||
+                  sr.serviceCategory?.toLowerCase().includes(query) ||
+                  sr.workDescription?.toLowerCase().includes(query) ||
+                  sr.briefSubject?.toLowerCase().includes(query) ||
+                  sr.status?.toLowerCase().includes(query) ||
+                  sr.priority?.toLowerCase().includes(query)
+                );
+              })
               : serviceRequests;
-            
+
             return filteredSRs.length > 0 ? (
               <>
                 <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
                   {filteredSRs.map((sr) => (
-                <div key={sr.id || sr._id} className="break-inside-avoid mb-4 sm:mb-6">
-                <Link href={`/service-requests/${sr.id || sr._id}`}>
-                  <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer">
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900">{sr.srNumber}</h3>
-                        <p className="text-sm text-gray-500 mt-1">{sr.department}</p>
-                      </div>
-                      <StatusBadge status={sr.status} type="sr" />
-                    </div>
-                    
-                    <div className="space-y-2 mb-4">
-                      <p className="text-sm">
-                        <span className="font-medium text-gray-700">Category:</span>{' '}
-                        <span className="text-gray-600">{sr.serviceCategory}</span>
-                      </p>
-                      <p className="text-sm">
-                        <span className="font-medium text-gray-700">Priority:</span>{' '}
-                        <span className="text-gray-600">{sr.priority}</span>
-                      </p>
-                      <p className="text-sm text-gray-600 line-clamp-2">{sr.briefSubject || sr.workDescription}</p>
-                    </div>
-
-                    {/* Related Job Orders and Purchase Orders */}
-                    {(() => {
-                      const srId = sr.id || sr._id;
-                      const relatedJOs = jobOrders.filter(jo => jo.srId === srId);
-                      const relatedPOs = purchaseOrders.filter(po => po.srId === srId);
-                      
-                      if (relatedJOs.length === 0 && relatedPOs.length === 0) {
-                        return null;
-                      }
-
-                      return (
-                        <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
-                          {relatedJOs.length > 0 && (
+                    <div key={sr.id || sr._id} className="break-inside-avoid mb-4 sm:mb-6">
+                      <Link href={`/service-requests/${sr.id || sr._id}`}>
+                        <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer">
+                          <div className="flex justify-between items-start mb-4">
                             <div>
-                              <p className="text-xs font-medium text-gray-700 mb-1">Related Job Orders:</p>
-                              <div className="space-y-1">
-                                {relatedJOs.map((jo) => (
-                                  <div
-                                    key={jo.id || jo._id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      e.preventDefault();
-                                      router.push(`/job-orders/${jo.id || jo._id}`);
-                                    }}
-                                    className="flex items-center justify-between text-xs bg-blue-50 hover:bg-blue-100 rounded px-2 py-1 transition-colors cursor-pointer"
-                                  >
-                                    <span className="text-blue-700 font-medium">{jo.joNumber}</span>
-                                    <div className="flex items-center gap-2">
-                                      {jo.type && (
-                                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                          jo.type === 'SERVICE' 
-                                            ? 'bg-blue-100 text-blue-800' 
-                                            : 'bg-purple-100 text-purple-800'
-                                        }`}>
-                                          {jo.type === 'SERVICE' ? 'Service' : 'Material'}
-                                        </span>
-                                      )}
-                                      <StatusBadge status={jo.status} type="jo" />
+                              <h3 className="text-lg font-semibold text-gray-900">{sr.srNumber}</h3>
+                              <p className="text-sm text-gray-500 mt-1">{sr.department}</p>
+                            </div>
+                            <StatusBadge status={sr.status} type="sr" />
+                          </div>
+
+                          <div className="space-y-2 mb-4">
+                            <p className="text-sm">
+                              <span className="font-medium text-gray-700">Category:</span>{' '}
+                              <span className="text-gray-600">{sr.serviceCategory}</span>
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-medium text-gray-700">Priority:</span>{' '}
+                              <span className="text-gray-600">{sr.priority}</span>
+                            </p>
+                            <p className="text-sm text-gray-600 line-clamp-2">{sr.briefSubject || sr.workDescription}</p>
+                          </div>
+
+                          {/* Related Job Orders and Purchase Orders */}
+                          {(() => {
+                            const srId = sr.id || sr._id;
+                            const relatedJOs = jobOrders.filter(jo => jo.srId === srId);
+                            const relatedPOs = purchaseOrders.filter(po => po.srId === srId);
+
+                            if (relatedJOs.length === 0 && relatedPOs.length === 0) {
+                              return null;
+                            }
+
+                            return (
+                              <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+                                {relatedJOs.length > 0 && (
+                                  <div>
+                                    <p className="text-xs font-medium text-gray-700 mb-1">Related Job Orders:</p>
+                                    <div className="space-y-1">
+                                      {relatedJOs.map((jo) => (
+                                        <div
+                                          key={jo.id || jo._id}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            router.push(`/job-orders/${jo.id || jo._id}`);
+                                          }}
+                                          className="flex items-center justify-between text-xs bg-blue-50 hover:bg-blue-100 rounded px-2 py-1 transition-colors cursor-pointer"
+                                        >
+                                          <span className="text-blue-700 font-medium">{jo.joNumber}</span>
+                                          <div className="flex items-center gap-2">
+                                            {jo.type && (
+                                              <span className={`text-xs px-1.5 py-0.5 rounded ${jo.type === 'SERVICE'
+                                                  ? 'bg-blue-100 text-blue-800'
+                                                  : 'bg-purple-100 text-purple-800'
+                                                }`}>
+                                                {jo.type === 'SERVICE' ? 'Service' : 'Material'}
+                                              </span>
+                                            )}
+                                            <StatusBadge status={jo.status} type="jo" />
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {relatedPOs.length > 0 && (
-                            <div>
-                              <p className="text-xs font-medium text-gray-700 mb-1">Related Purchase Orders:</p>
-                              <div className="space-y-1">
-                                {relatedPOs.map((po) => (
-                                  <div
-                                    key={po.id || po._id}
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      e.preventDefault();
-                                      router.push(`/purchase-orders/${po.id || po._id}`);
-                                    }}
-                                    className="flex items-center justify-between text-xs bg-green-50 hover:bg-green-100 rounded px-2 py-1 transition-colors cursor-pointer"
-                                  >
-                                    <span className="text-green-700 font-medium">{po.poNumber}</span>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-gray-600">₱{po.totalAmount?.toLocaleString() || '0'}</span>
-                                      <StatusBadge status={po.status} type="po" />
+                                )}
+                                {relatedPOs.length > 0 && (
+                                  <div>
+                                    <p className="text-xs font-medium text-gray-700 mb-1">Related Purchase Orders:</p>
+                                    <div className="space-y-1">
+                                      {relatedPOs.map((po) => (
+                                        <div
+                                          key={po.id || po._id}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            router.push(`/purchase-orders/${po.id || po._id}`);
+                                          }}
+                                          className="flex items-center justify-between text-xs bg-green-50 hover:bg-green-100 rounded px-2 py-1 transition-colors cursor-pointer"
+                                        >
+                                          <span className="text-green-700 font-medium">{po.poNumber}</span>
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-xs text-gray-600">₱{po.totalAmount?.toLocaleString() || '0'}</span>
+                                            <StatusBadge status={po.status} type="po" />
+                                          </div>
+                                        </div>
+                                      ))}
                                     </div>
                                   </div>
-                                ))}
+                                )}
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
+
+                          <div className="text-xs text-gray-500 mt-4 pt-4 border-t">
+                            Created: {new Date(sr.createdAt).toLocaleDateString()}
+                          </div>
                         </div>
-                      );
-                    })()}
-
-                    <div className="text-xs text-gray-500 mt-4 pt-4 border-t">
-                      Created: {new Date(sr.createdAt).toLocaleDateString()}
+                      </Link>
                     </div>
-                  </div>
-                </Link>
-                </div>
                   ))}
                 </div>
                 {/* Loading indicator for infinite scroll */}

@@ -32,37 +32,31 @@ export async function POST(
       );
     }
 
-    // Get user info to check department
-    // Note: We need to get the actual user from database to check department
-    // For now, we'll use the role from the request body
-    // Finance users send role 'FINANCE' in the request
-    const isFinance = body.role === 'FINANCE';
+    // Only President (MANAGEMENT, SUPER_ADMIN, ADMIN) can approve Purchase Orders
     const isPresident = body.role === 'SUPER_ADMIN' || body.role === 'MANAGEMENT' || body.role === 'ADMIN';
     
-    // Check approval order: Finance must approve first, then President
-    const financeApproved = purchaseOrder.approvals.some(
-      (a: any) => a.role === 'FINANCE' && a.action === 'APPROVED'
-    );
+    // Check if President has already approved
     const presidentApproved = purchaseOrder.approvals.some(
       (a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED'
     );
 
-    // If President trying to approve but Finance hasn't approved yet
-    if (body.action === 'APPROVED' && isPresident && !financeApproved) {
+    // Only President can approve
+    if (body.action === 'APPROVED' && !isPresident) {
       return NextResponse.json(
-        { error: 'Finance must approve the Purchase Order before President can approve' },
-        { status: 400 }
+        { error: 'Only President can approve Purchase Orders' },
+        { status: 403 }
       );
     }
 
-    // Map role for approval record
+    // Map role for approval record - only MANAGEMENT role for approvals
     let approvalRole: UserRole;
-    if (isFinance) {
-      approvalRole = 'FINANCE';
-    } else if (isPresident) {
+    if (isPresident) {
       approvalRole = 'MANAGEMENT';
     } else {
-      approvalRole = body.role;
+      return NextResponse.json(
+        { error: 'Only President can approve Purchase Orders' },
+        { status: 403 }
+      );
     }
 
     // Add approval
@@ -77,15 +71,10 @@ export async function POST(
 
     purchaseOrder.approvals.push(approval);
 
-    // Update status based on approval action and sequence
+    // Update status based on approval action
     if (body.action === 'APPROVED') {
-      // If Finance approved, status becomes APPROVED (pending President)
-      // If President approved (after Finance), status stays APPROVED
-      if (isFinance) {
-        purchaseOrder.status = 'APPROVED'; // Finance approved, waiting for President
-      } else if (isPresident && financeApproved) {
-        purchaseOrder.status = 'APPROVED'; // Both approved, fully approved
-      }
+      // President approved, status becomes APPROVED
+      purchaseOrder.status = 'APPROVED';
     } else if (body.action === 'REJECTED') {
       purchaseOrder.status = 'REJECTED';
     } else if (body.action === 'SUBMITTED' && purchaseOrder.status === 'DRAFT') {

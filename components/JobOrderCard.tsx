@@ -21,18 +21,18 @@ function normalizeDept(dept: string | undefined): string {
 // Check if user is the handling department for this service category
 function isHandlingDepartment(userDepartment: string | undefined, serviceCategory: string): boolean {
   const normalizedUserDept = normalizeDept(userDepartment);
-  
+
   // President can handle all
   if (normalizedUserDept === 'president') {
     return true;
   }
-  
+
   const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
   if (!authorizedDepts) {
     // Default to operations for unknown categories
     return normalizedUserDept === 'operations';
   }
-  
+
   return authorizedDepts.includes(normalizedUserDept);
 }
 
@@ -46,7 +46,7 @@ function getHandlingDepartmentName(serviceCategory: string): string {
 
 interface JobOrderCardProps {
   jobOrder: JobOrder;
-  currentUser?: { role?: string; department?: string };
+  currentUser?: { role?: string; department?: string; id?: string };
 }
 
 export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProps) {
@@ -54,29 +54,33 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
   const isFinance = normalizeDept(currentUser?.department) === 'finance' || currentUser?.role === 'FINANCE';
   const isOperations = normalizeDept(currentUser?.department) === 'operations' || currentUser?.role === 'OPERATIONS';
   const isManagement = currentUser?.role === 'MANAGEMENT' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
-  
+
   // Check if user is the handling department for this JO's service category
   const isHandlingDept = isHandlingDepartment(currentUser?.department, jobOrder.serviceCategory);
-  
+
   // Get the handling department name for display
   const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
 
   // For SERVICE type: Creating the JO by the handling department counts as their approval
   // So only President/Management approval is needed after JO creation
   // For MATERIAL_REQUISITION: Finance approves budget first, then Management
-  
-  const managementApproved = jobOrder.approvals?.some((a: any) => 
+
+  const managementApproved = jobOrder.approvals?.some((a: any) =>
     a.role === 'MANAGEMENT' && a.action === 'APPROVED'
   );
-  
-  const financeApproved = jobOrder.approvals?.some((a: any) => 
+
+  const financeApproved = jobOrder.approvals?.some((a: any) =>
     a.role === 'FINANCE' && (a.action === 'NOTED' || a.action === 'BUDGET_APPROVED')
   );
 
   // Check if Job Order needs approval (for visual highlight - show even if user can approve)
   const needsApproval = (() => {
     if (jobOrder.status === 'CLOSED') return false;
-    
+    // If status is APPROVED, IN_PROGRESS, COMPLETED, or REJECTED, it no longer needs approval
+    if (jobOrder.status === 'APPROVED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'COMPLETED' || jobOrder.status === 'REJECTED') {
+      return false;
+    }
+
     const isServiceType = jobOrder.type === 'SERVICE';
 
     if (isServiceType) {
@@ -91,8 +95,31 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
   // Check if current user needs to approve (for different highlight color)
   const needsUserApproval = (() => {
     if (jobOrder.status === 'CLOSED') return false;
-    
+    if (!currentUser?.id) return false;
+    if (jobOrder.status === 'REJECTED') return false;
+
     const isServiceType = jobOrder.type === 'SERVICE';
+
+    // Check if current user has already approved
+    // For Material Requisition, check both APPROVED and BUDGET_APPROVED actions
+    // For Service type, check APPROVED action
+    const userHasApproved = jobOrder.approvals?.some((a: any) => {
+      if (a.userId !== currentUser.id) return false;
+      if (isServiceType) {
+        // Service type: Check if user approved (APPROVED action)
+        return a.role === 'MANAGEMENT' && a.action === 'APPROVED';
+      } else {
+        // Material Requisition: Check if user approved budget (BUDGET_APPROVED) or JO (APPROVED)
+        if (isFinance) {
+          return a.role === 'FINANCE' && (a.action === 'BUDGET_APPROVED' || a.action === 'NOTED');
+        } else if (isManagement) {
+          return a.role === 'MANAGEMENT' && (a.action === 'APPROVED' || a.action === 'BUDGET_APPROVED');
+        }
+      }
+      return false;
+    });
+
+    if (userHasApproved) return false; // User already approved, don't show "Needs Your Approval"
 
     if (isServiceType) {
       // Service type: Only President needs to approve
@@ -115,7 +142,11 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
 
   const approvalMessage = (() => {
     if (jobOrder.status === 'CLOSED') return '';
-    
+    // If status is APPROVED, IN_PROGRESS, COMPLETED, or REJECTED, don't show approval messages
+    if (jobOrder.status === 'APPROVED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'COMPLETED' || jobOrder.status === 'REJECTED') {
+      return '';
+    }
+
     const isServiceType = jobOrder.type === 'SERVICE';
 
     if (isServiceType) {
@@ -143,25 +174,23 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
 
   return (
     <Link href={`/job-orders/${jobOrder.id || jobOrder._id}`}>
-      <div className={`bg-white rounded-lg shadow-md p-4 sm:p-6 border-2 transition-all cursor-pointer ${
-        needsUserApproval
+      <div className={`bg-white rounded-lg shadow-md p-4 sm:p-6 border-2 transition-all cursor-pointer ${needsUserApproval
+        ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+        : canStartExecution
           ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
-          : canStartExecution
-          ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
-          : needsApproval 
-          ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow' 
-          : 'border-gray-200 hover:shadow-lg'
-      }`}>
+          : needsApproval
+            ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow'
+            : 'border-gray-200 hover:shadow-lg'
+        }`}>
         <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-0 mb-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900 break-words">{jobOrder.joNumber}</h3>
               {jobOrder.type && (
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                  jobOrder.type === 'SERVICE' 
-                    ? 'bg-blue-100 text-blue-800' 
-                    : 'bg-purple-100 text-purple-800'
-                }`}>
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${jobOrder.type === 'SERVICE'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'bg-purple-100 text-purple-800'
+                  }`}>
                   {jobOrder.type === 'SERVICE' ? 'Service' : 'Material Requisition'}
                 </span>
               )}
@@ -183,11 +212,11 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
               <div className="flex-1">
                 <p className="text-sm font-semibold text-blue-800">Needs Your Approval</p>
                 <p className="text-xs text-blue-700">
-                  {jobOrder.type === 'SERVICE' 
+                  {jobOrder.type === 'SERVICE'
                     ? 'This Job Order is waiting for your approval as President.'
-                    : !financeApproved 
-                    ? 'This Job Order is waiting for your approval as Finance.'
-                    : 'This Job Order is waiting for your approval as President.'}
+                    : !financeApproved
+                      ? 'This Job Order is waiting for your approval as Finance.'
+                      : 'This Job Order is waiting for your approval as President.'}
                 </p>
               </div>
             </div>
@@ -223,7 +252,7 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
             </div>
           </div>
         )}
-        
+
         <div className="space-y-2 mb-4">
           <p className="text-sm">
             <span className="font-medium text-gray-700">Department:</span>{' '}
@@ -249,7 +278,7 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
             </p>
           </div>
         )}
-        
+
         {jobOrder.status === 'COMPLETED' && jobOrder.acceptance?.actualCompletionDate && (
           <div className="mt-3 p-2 bg-green-50 rounded-md border border-green-200">
             <p className="text-xs text-green-700">

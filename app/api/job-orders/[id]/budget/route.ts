@@ -15,7 +15,6 @@ export async function PATCH(
       estimatedTotalCost, 
       budgetSource, 
       costCenter, 
-      withinApprovedBudget,
       action // 'APPROVE' or 'REJECT' for budget approval
     } = body;
 
@@ -83,9 +82,6 @@ export async function PATCH(
       estimatedTotalCost: calculatedCost || jobOrder.budget?.estimatedTotalCost || 0,
       budgetSource: budgetSource || jobOrder.budget?.budgetSource || jobOrder.budget?.budgetSource || '',
       costCenter: costCenter || jobOrder.budget?.costCenter || jobOrder.budget?.budgetSource || '',
-      withinApprovedBudget: withinApprovedBudget !== undefined 
-        ? withinApprovedBudget 
-        : (jobOrder.budget?.withinApprovedBudget || false),
     };
 
     // Check if Finance has approved (required before President can approve/update)
@@ -96,8 +92,7 @@ export async function PATCH(
     // President cannot update or approve budget until Finance has approved
     // Only block if there's an actual update attempt (action is set, or budget fields are being updated)
     const isUpdatingBudget = action || 
-      (estimatedTotalCost !== undefined && estimatedTotalCost !== (jobOrder.budget?.estimatedTotalCost || 0)) ||
-      (withinApprovedBudget !== undefined && withinApprovedBudget !== (jobOrder.budget?.withinApprovedBudget || false));
+      (estimatedTotalCost !== undefined && estimatedTotalCost !== (jobOrder.budget?.estimatedTotalCost || 0));
     
     if (isPresident && !financeApproved && isUpdatingBudget) {
       return NextResponse.json(

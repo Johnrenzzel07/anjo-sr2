@@ -13,7 +13,7 @@ export async function POST(
     const body: ApprovalAction = await request.json();
 
     const jobOrder = await JobOrder.findById(id);
-    
+
     if (!jobOrder) {
       return NextResponse.json(
         { error: 'Job order not found' },
@@ -39,22 +39,24 @@ export async function POST(
     const hasReviewed = jobOrder.approvals.some((a: any) => a.action === 'REVIEWED');
     const hasNoted = jobOrder.approvals.some((a: any) => a.action === 'NOTED');
     const hasApproved = jobOrder.approvals.some((a: any) => a.action === 'APPROVED');
-    
+
     // Check for Service type sequential approvals
     const isServiceType = jobOrder.type === 'SERVICE';
     // For SERVICE type: Creating the JO counts as handling department approval
     // Only President approval is needed
-    const presidentApproved = jobOrder.approvals.some((a: any) => 
+    const presidentApproved = jobOrder.approvals.some((a: any) =>
       a.role === 'MANAGEMENT' && a.action === 'APPROVED'
     );
-    
+
     // Legacy check for Operations approval (for backward compatibility with old JOs)
-    const operationsApproved = jobOrder.approvals.some((a: any) => 
+    const operationsApproved = jobOrder.approvals.some((a: any) =>
       a.role === 'OPERATIONS' && a.action === 'APPROVED'
     );
 
     if (jobOrder.status !== 'CLOSED') {
-      if (isServiceType) {
+      if (body.action === 'REJECTED') {
+        jobOrder.status = 'REJECTED';
+      } else if (isServiceType) {
         // For Service type: Only President approval is needed (creating JO = handling dept approval)
         if (presidentApproved) {
           jobOrder.status = 'APPROVED';
@@ -76,13 +78,13 @@ export async function POST(
 
     await jobOrder.save();
     await jobOrder.populate('srId');
-    
+
     // Notify next approver if needed
     const { notifyJobOrderNeedsApproval } = await import('@/lib/utils/notifications');
-    
+
     // Get the name of the current approver
     const currentApprover = body.userName;
-    
+
     if (isServiceType) {
       // For Service type: When President approves, notify handling department that they can start execution
       if (presidentApproved) {
@@ -97,16 +99,16 @@ export async function POST(
       }
     } else {
       // For Material Requisition: If Finance approved, notify Management
-      const financeApproved = jobOrder.approvals.some((a: any) => 
+      const financeApproved = jobOrder.approvals.some((a: any) =>
         a.role === 'FINANCE' && (a.action === 'NOTED' || a.action === 'BUDGET_APPROVED')
       );
       if (financeApproved && !presidentApproved) {
         // Find the Finance approver name
-        const financeApprover = jobOrder.approvals.find((a: any) => 
+        const financeApprover = jobOrder.approvals.find((a: any) =>
           a.role === 'FINANCE' && (a.action === 'NOTED' || a.action === 'BUDGET_APPROVED')
         );
         const approverName = financeApprover?.userName || currentApprover;
-        
+
         await notifyJobOrderNeedsApproval(
           jobOrder._id.toString(),
           jobOrder.joNumber,
@@ -124,7 +126,7 @@ export async function POST(
         );
       }
     }
-    
+
     return NextResponse.json({ jobOrder });
   } catch (error: any) {
     console.error('Error adding approval:', error);

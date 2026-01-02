@@ -13,7 +13,7 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '9', 10);
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const status = searchParams.get('status'); // Optional status filter
-    
+
     if (joId) {
       // Get PO for specific Job Order
       const purchaseOrder = await PurchaseOrder.findOne({ joId })
@@ -21,15 +21,22 @@ export async function GET(request: Request) {
         .populate('srId', 'srNumber');
       return NextResponse.json({ purchaseOrders: purchaseOrder ? [purchaseOrder] : [] });
     }
-    
+
     // Build base query
     let query: any = {};
-    
+
     // Apply status filter if provided
-    if (status && status !== 'all') {
+    // By default, exclude CLOSED status unless explicitly requested
+    const includeClosed = searchParams.get('includeClosed') === 'true';
+    if (status === 'everything') {
+      // Don't filter by status at all
+    } else if (status && status !== 'all') {
       query.status = status;
+    } else {
+      // Exclude CLOSED and REJECTED status by default when no specific status is requested
+      query.status = { $nin: ['CLOSED', 'REJECTED'] };
     }
-    
+
     // Use aggregation to sort by status priority, then by createdAt, with pagination
     const pipeline: any[] = [
       { $match: query },
@@ -129,13 +136,13 @@ export async function GET(request: Request) {
         }
       }
     ];
-    
+
     const [purchaseOrders, totalCount] = await Promise.all([
       PurchaseOrder.aggregate(pipeline),
       PurchaseOrder.countDocuments(query)
     ]);
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       purchaseOrders,
       totalCount,
       hasMore: skip + limit < totalCount
@@ -162,9 +169,9 @@ export async function POST(request: NextRequest) {
 
     const userRole = authUser.role;
     const userDepartment = (authUser as any).department;
-    const canCreatePO = userRole === 'ADMIN' || 
-                        userRole === 'SUPER_ADMIN' ||
-                        (userRole === 'APPROVER' && userDepartment === 'Purchasing');
+    const canCreatePO = userRole === 'ADMIN' ||
+      userRole === 'SUPER_ADMIN' ||
+      (userRole === 'APPROVER' && userDepartment === 'Purchasing');
 
     if (!canCreatePO) {
       return NextResponse.json(
@@ -190,7 +197,7 @@ export async function POST(request: NextRequest) {
     // Check type - handle both cases where type might be missing or different
     const jobOrderType = (jobOrder as any)?.type;
     const joNumber = (jobOrder as any).joNumber;
-    
+
     console.log('PO Creation - Job Order Check:', {
       joId,
       joNumber,
@@ -198,10 +205,10 @@ export async function POST(request: NextRequest) {
       typeExists: !!jobOrderType,
       isMaterialRequisition: jobOrderType === 'MATERIAL_REQUISITION'
     });
-    
+
     if (!jobOrderType || jobOrderType !== 'MATERIAL_REQUISITION') {
       return NextResponse.json(
-        { 
+        {
           error: 'Purchase Order can only be created from Material Requisition Job Orders',
           details: `Job Order ${joNumber || joId} has type: "${jobOrderType || 'NOT SET'}". You must create a NEW Job Order and select "Material Requisition" as the type when creating it.`,
           jobOrderType: jobOrderType || 'NOT SET',
@@ -212,21 +219,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // For Material Requisition, check if budget has been approved
+    // For Material Requisition, check if budget has been approved by President
     const approvals = (jobOrder as any)?.approvals || [];
-    const financeBudgetApproved = approvals.some(
-      (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
-    );
     const presidentBudgetApproved = approvals.some(
       (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
     );
-    const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
 
-    if (!budgetCleared) {
+    if (!presidentBudgetApproved) {
       return NextResponse.json(
-        { 
+        {
           error: 'Budget must be approved before Purchase Order can be created',
-          details: 'The budget for this Material Requisition Job Order must be approved by both Finance and President before a Purchase Order can be created.',
+          details: 'The budget for this Material Requisition Job Order must be approved by President before a Purchase Order can be created.',
           solution: 'Please ensure the budget is approved in the Budget Information section before creating a Purchase Order.'
         },
         { status: 400 }
@@ -280,7 +283,7 @@ export async function POST(request: NextRequest) {
     await purchaseOrder.save();
     await purchaseOrder.populate('joId', 'joNumber type');
     await purchaseOrder.populate('srId', 'srNumber');
-    
+
     return NextResponse.json({ purchaseOrder }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating purchase order:', error);

@@ -2,23 +2,24 @@
 
 export type PriorityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type SRStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
-export type JOStatus = 
-  | 'DRAFT' 
-  | 'BUDGET_CLEARED' 
-  | 'APPROVED' 
-  | 'IN_PROGRESS' 
-  | 'COMPLETED' 
+export type JOStatus =
+  | 'DRAFT'
+  | 'BUDGET_CLEARED'
+  | 'APPROVED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'REJECTED'
   | 'CLOSED';
 export type UserRole = 'OPERATIONS' | 'DEPARTMENT_HEAD' | 'FINANCE' | 'MANAGEMENT' | 'SUPPLIER' | 'SUPER_ADMIN' | 'ADMIN';
 export type SourceType = 'IN_HOUSE' | 'PURCHASE';
 export type JobOrderType = 'SERVICE' | 'MATERIAL_REQUISITION';
-export type POStatus = 
-  | 'DRAFT' 
-  | 'SUBMITTED' 
-  | 'APPROVED' 
-  | 'REJECTED' 
-  | 'PURCHASED' 
-  | 'RECEIVED' 
+export type POStatus =
+  | 'DRAFT'
+  | 'SUBMITTED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'PURCHASED'
+  | 'RECEIVED'
   | 'CLOSED';
 
 export interface ServiceRequest {
@@ -112,7 +113,7 @@ export interface Approval {
   role: UserRole;
   userId: string;
   userName: string;
-  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED' | 'SUBMITTED';
+  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'BUDGET_APPROVED' | 'BUDGET_REJECTED';
   timestamp: string;
   comments?: string;
 }
@@ -123,10 +124,10 @@ export interface JobOrder {
   joNumber: string;
   srId: string;
   serviceRequest?: ServiceRequest;
-  
+
   // Type: Service or Material Requisition
   type: JobOrderType;
-  
+
   // Header
   dateIssued: string;
   requestedBy: string;
@@ -135,37 +136,37 @@ export interface JobOrder {
   priorityLevel: PriorityLevel;
   targetStartDate: string;
   targetCompletionDate: string;
-  
+
   // Job Description
   serviceCategory: string;
   workDescription: string;
   location: string;
   reason: string;
-  
+
   // Materials & Services
   materials: MaterialItem[];
-  
+
   // Manpower (for Service type only)
   manpower: ManpowerAssignment;
-  
+
   // Schedule
   schedule: ScheduleMilestone[];
-  
+
   // Budget
   budget: BudgetInfo;
-  
+
   // Acceptance
   acceptance: AcceptanceInfo;
-  
+
   // Material Transfer (for Material Requisition type)
   materialTransfer?: MaterialTransferInfo;
-  
+
   // Approvals
   approvals: Approval[];
-  
+
   // Status
   status: JOStatus;
-  
+
   // Metadata
   createdAt: string;
   updatedAt: string;
@@ -194,7 +195,7 @@ export interface ApprovalAction {
   role: UserRole;
   userId: string;
   userName: string;
-  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED' | 'SUBMITTED';
+  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'BUDGET_APPROVED' | 'BUDGET_REJECTED';
   comments?: string;
 }
 
@@ -226,37 +227,37 @@ export interface PurchaseOrder {
   jobOrder?: JobOrder;
   srId: string;
   serviceRequest?: ServiceRequest;
-  
+
   // Header
   dateRequested: string;
   requestedBy: string;
   department: string;
   priority: PriorityLevel;
-  
+
   // Items
   items: PurchaseOrderItem[];
-  
+
   // Supplier Information
   supplierName?: string;
   supplierContact?: string;
   supplierAddress?: string;
-  
+
   // Financial
   subtotal: number;
   tax?: number;
   totalAmount: number;
-  
+
   // Status
   status: POStatus;
-  
+
   // Approvals
   approvals: Approval[];
-  
+
   // Delivery
   expectedDeliveryDate?: string;
   actualDeliveryDate?: string;
   deliveryNotes?: string;
-  
+
   // Metadata
   createdAt: string;
   updatedAt: string;
