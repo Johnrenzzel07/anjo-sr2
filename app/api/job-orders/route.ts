@@ -356,11 +356,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Final verification
-    const finalCheck = await JobOrder.findById(jobOrder._id).lean();
+    const finalCheck = await JobOrder.findById(jobOrder._id).lean() as any;
     console.log('Final type check:', {
-      type: (finalCheck as any)?.type,
+      type: finalCheck?.type,
       expected: jobOrderType,
-      match: (finalCheck as any)?.type === jobOrderType
+      match: finalCheck?.type === jobOrderType
     });
 
     // Populate service request for response
