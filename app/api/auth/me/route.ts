@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
 
     await connectDB();
     const user = await User.findById(authUser.id);
-    
+
     if (!user || !user.isActive) {
       return NextResponse.json(
         { error: 'User not found or inactive' },
@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
         name: user.name,
         role: user.role,
         department: user.department,
+        phone: user.phone || '',
       },
     });
   } catch (error: any) {

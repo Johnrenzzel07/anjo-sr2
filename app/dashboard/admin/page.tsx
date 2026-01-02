@@ -89,9 +89,9 @@ export default function AdminDashboard() {
       const approvedSRData = await approvedSRRes.json();
       setApprovedSRCount(approvedSRData.totalCount || 0);
 
-      // Fetch all Job Orders count (including CLOSED for accurate total)
+      // Fetch all Job Orders count (including ALL statuses for accurate total)
       const joDeptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
-      const allJORes = await fetch(`/api/job-orders?limit=1&skip=0${joDeptParam}&includeClosed=true`);
+      const allJORes = await fetch(`/api/job-orders?limit=1&skip=0&status=everything${joDeptParam}`);
       const allJOData = await allJORes.json();
       setAllJOCount(allJOData.totalCount || 0);
 
@@ -105,10 +105,10 @@ export default function AdminDashboard() {
       const completedJOData = await completedJORes.json();
       setCompletedJOCount(completedJOData.totalCount || 0);
 
-      // Fetch Purchase Orders count (including CLOSED for accurate total)
+      // Fetch Purchase Orders count (including ALL statuses for accurate total)
       if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
         (user?.role === 'APPROVER' && (normalizeDept(user.department) === 'purchasing' || normalizeDept(user.department) === 'finance'))) {
-        const poRes = await fetch(`/api/purchase-orders?limit=1&skip=0&includeClosed=true`);
+        const poRes = await fetch(`/api/purchase-orders?limit=1&skip=0&status=everything`);
         const poData = await poRes.json();
         setPoCount(poData.totalCount || 0);
       }
@@ -867,8 +867,8 @@ export default function AdminDashboard() {
                 >
                   <option value="all">Needs Approval</option>
                   {/* <option value="needs_approval">Needs Approval</option> */}
-                  <option value="DRAFT">Draft</option>
-                  <option value="SUBMITTED">Submitted</option>
+                  {/* <option value="DRAFT">Draft</option>
+                  <option value="SUBMITTED">Submitted</option> */}
                   <option value="APPROVED">Approved</option>
                   <option value="REJECTED">Rejected</option>
                   <option value="PURCHASED">Purchased</option>

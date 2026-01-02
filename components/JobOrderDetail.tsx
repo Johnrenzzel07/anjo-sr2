@@ -125,6 +125,16 @@ export default function JobOrderDetail({
     // Check if user is President/Management (SUPER_ADMIN/ADMIN should be treated as MANAGEMENT)
     const isPresident = userRole === 'MANAGEMENT' || userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
 
+    // Check if President/Management has ALREADY approved, rejected, or approved budget for this JO
+    const presidentHasActed = jobOrder.approvals.some(
+      a => a.role === 'MANAGEMENT' && (a.action === 'APPROVED' || a.action === 'REJECTED' || a.action === 'BUDGET_APPROVED')
+    );
+
+    // If President has already acted (approved, rejected, or budget approved), no further approval/rejection actions
+    if (isPresident && presidentHasActed && (action === 'APPROVED' || action === 'REJECTED')) {
+      return false;
+    }
+
     const hasApproval = jobOrder.approvals.some(a => {
       // Check if user already approved with the SAME action
       if (isPresident && a.role === 'MANAGEMENT' && a.action === action) return true;
@@ -498,10 +508,10 @@ export default function JobOrderDetail({
         {/* Service Type Approval Status */}
         {jobOrder.type === 'SERVICE' && (
           <div className={`mb-4 p-3 border rounded-md ${jobOrder.status === 'REJECTED'
-              ? 'bg-red-50 border-red-200'
-              : jobOrder.approvals.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED')
-                ? 'bg-green-50 border-green-200'
-                : 'bg-blue-50 border-blue-200'
+            ? 'bg-red-50 border-red-200'
+            : jobOrder.approvals.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED')
+              ? 'bg-green-50 border-green-200'
+              : 'bg-blue-50 border-blue-200'
             }`}>
             {(() => {
               const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
@@ -571,7 +581,7 @@ export default function JobOrderDetail({
               }
 
               // For SERVICE type: Handling department created it, now waiting for President
-              if (jobOrder.type === 'SERVICE' && isHandlingDept && !isPresident && jobOrder.status !== 'REJECTED') {
+              if (jobOrder.type === 'SERVICE' && isHandlingDept && !isPresident && (jobOrder.status as string) !== 'REJECTED') {
                 return 'This Job Order is waiting for President approval. Once approved, you can start execution.';
               }
 

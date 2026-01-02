@@ -73,6 +73,7 @@ export default function ServiceRequestForm() {
         requestedBy: user.name,
         contactEmail: user.email,
         department: user.department || '',
+        contactPhone: user.phone || '',
       }));
     }
   }, [user]);
@@ -173,9 +174,9 @@ export default function ServiceRequestForm() {
         {/* Header with Logo */}
         <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
           <div className="flex items-center justify-center gap-4 mb-4">
-            <img 
-              src="/logo.png" 
-              alt="ANJO WORLD" 
+            <img
+              src="/logo.png"
+              alt="ANJO WORLD"
               className="h-20 w-20 sm:h-24 sm:w-24 object-contain"
             />
           </div>
