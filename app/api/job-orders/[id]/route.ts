@@ -22,7 +22,7 @@ export async function GET(
     }
     
     // Auto-fix status for existing JOs: If SERVICE type has President approval but status is DRAFT, update to APPROVED
-    if (jobOrder.type === 'SERVICE' && jobOrder.status === 'DRAFT' && jobOrder.status !== 'CLOSED') {
+    if (jobOrder.type === 'SERVICE' && jobOrder.status === 'DRAFT') {
       const presidentApproved = jobOrder.approvals?.some((a: any) => 
         a.role === 'MANAGEMENT' && a.action === 'APPROVED'
       );
