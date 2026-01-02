@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
 
     // Validate that JO exists and is Material Requisition type
     // Use lean() to get plain object and ensure type field is included
-    const jobOrder = await JobOrder.findById(joId).lean();
+    const jobOrder = await JobOrder.findById(joId).lean() as any;
     if (!jobOrder) {
       return NextResponse.json(
         { error: 'Job Order not found' },
