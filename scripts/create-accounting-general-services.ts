@@ -5,7 +5,7 @@
  */
 
 import mongoose from 'mongoose';
-import User from '@/lib/models/User';
+import User, { UserRole } from '@/lib/models/User';
 import { hashPassword } from '@/lib/auth';
 
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/your-database';
@@ -19,7 +19,13 @@ async function createAccounts() {
     const password = 'anjo123';
     const hashedPassword = await hashPassword(password);
 
-    const accounts = [
+    const accounts: Array<{
+      name: string;
+      email: string;
+      department: string;
+      role: UserRole;
+      password: string;
+    }> = [
       {
         name: 'Accounting Head',
         email: 'accounting.head@anjoworld.com',
