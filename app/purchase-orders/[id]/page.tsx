@@ -358,8 +358,8 @@ export default function PurchaseOrderDetailPage() {
                       </div>
                       <div className="text-right">
                         <p className={`text-sm font-medium ${approval.action === 'APPROVED' ? 'text-green-600' :
-                            approval.action === 'REJECTED' ? 'text-red-600' :
-                              'text-gray-900'
+                          approval.action === 'REJECTED' ? 'text-red-600' :
+                            'text-gray-900'
                           }`}>
                           {approval.action}
                         </p>
@@ -499,8 +499,7 @@ export default function PurchaseOrderDetailPage() {
                             message: 'Please provide a reason for rejecting this Purchase Order.',
                             confirmButtonText: 'Reject',
                             confirmButtonColor: 'red',
-                            placeholder: 'Enter rejection reason (required)...',
-                            required: true,
+                            placeholder: 'Enter rejection reason...',
                           });
                           if (comments === null) return; // User cancelled
                           try {
