@@ -381,43 +381,7 @@ export default function PurchaseOrderDetailPage() {
           <div className="mb-6 bg-white rounded-lg shadow-md p-6 border border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Actions</h2>
 
-            {/* Submit Button (for DRAFT status) */}
-            {purchaseOrder.status === 'DRAFT' && (
-              <div className="mb-4">
-                <button
-                  onClick={async () => {
-                    const proceed = await confirm('Submit this Purchase Order for approval?', {
-                      title: 'Submit Purchase Order',
-                      confirmButtonColor: 'blue',
-                    });
-                    if (!proceed) return;
-                    try {
-                      const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ status: 'SUBMITTED' }),
-                      });
-                      if (response.ok) {
-                        toast.showSuccess('Purchase Order submitted successfully!');
-                        fetchPurchaseOrder();
-                      } else {
-                        const error = await response.json();
-                        toast.showError(error.error || 'Failed to submit Purchase Order');
-                      }
-                    } catch (error) {
-                      console.error('Error submitting PO:', error);
-                      toast.showError('Failed to submit Purchase Order');
-                    }
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
-                >
-                  Submit for Approval
-                </button>
-                <p className="text-xs text-gray-500 mt-2">
-                  Submit this Purchase Order to start the approval process (President)
-                </p>
-              </div>
-            )}
+            {/* Submit Button removed - budget approval happens at JO level, PO approval is automatic when President approves JO budget */}
 
             {/* Approval Button (for SUBMITTED status) */}
             {(purchaseOrder.status === 'SUBMITTED' || purchaseOrder.status === 'APPROVED') && currentUser && (
@@ -537,183 +501,98 @@ export default function PurchaseOrderDetailPage() {
             )}
 
             {/* Post-Approval Actions: Mark as Purchased/Received */}
-            {/* Show this block when PO is approved by President, purchased, or received */}
-            {purchaseOrder.approvals?.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED') &&
-              (purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED' || purchaseOrder.status === 'RECEIVED' || purchaseOrder.status === 'CLOSED') && (
-                <div className="mt-6 pt-6 border-t border-gray-200">
-                  <h3 className="text-md font-semibold text-gray-900 mb-3">Post-Approval Actions</h3>
-                  <div className="space-y-3">
-                    {/* Mark as Purchased */}
-                    {purchaseOrder.status === 'APPROVED' && (
-                      <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
-                        <p className="text-sm text-gray-700 mb-2">
-                          <strong>Step 1:</strong> Mark as Purchased when the order has been placed with the supplier.
-                        </p>
-                        <button
-                          onClick={async () => {
-                            const proceed = await confirm('Mark this Purchase Order as PURCHASED? This indicates the order has been placed with the supplier.', {
-                              title: 'Mark as Purchased',
-                              confirmButtonColor: 'blue',
+            {/* Show this block for DRAFT (budget already approved at JO level), APPROVED, PURCHASED, RECEIVED, or CLOSED */}
+            {(purchaseOrder.status === 'DRAFT' || purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED' || purchaseOrder.status === 'RECEIVED' || purchaseOrder.status === 'CLOSED') && (
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <h3 className="text-md font-semibold text-gray-900 mb-3">Post-Approval Actions</h3>
+                <div className="space-y-3">
+                  {/* Mark as Received - show for DRAFT, APPROVED, or PURCHASED */}
+                  {(purchaseOrder.status === 'DRAFT' || purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED') && (
+                    <div className="p-3 bg-green-50 rounded-md border border-green-200">
+                      <p className="text-sm text-gray-700 mb-2">
+                        Mark as Received when the items have been delivered. This will automatically set the Job Order status to IN_PROGRESS.
+                      </p>
+                      <div className="space-y-2 mb-3">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Actual Delivery Date:
+                        </label>
+                        <input
+                          type="date"
+                          id="actualDeliveryDate"
+                          className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                          defaultValue={purchaseOrder.actualDeliveryDate ? new Date(purchaseOrder.actualDeliveryDate).toISOString().split('T')[0] : ''}
+                        />
+                        <label className="block text-sm font-medium text-gray-700 mt-2">
+                          Delivery Notes (optional):
+                        </label>
+                        <textarea
+                          id="deliveryNotes"
+                          rows={3}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                          placeholder="Enter any notes about the delivery..."
+                          defaultValue={purchaseOrder.deliveryNotes || ''}
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          const proceed = await confirm('Mark this Purchase Order as RECEIVED? This will automatically set the Job Order to IN_PROGRESS.', {
+                            title: 'Mark as Received',
+                            confirmButtonColor: 'green',
+                          });
+                          if (!proceed) return;
+                          try {
+                            const actualDeliveryDate = (document.getElementById('actualDeliveryDate') as HTMLInputElement)?.value;
+                            const deliveryNotes = (document.getElementById('deliveryNotes') as HTMLTextAreaElement)?.value;
+
+                            const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                status: 'RECEIVED',
+                                actualDeliveryDate: actualDeliveryDate || new Date().toISOString(),
+                                deliveryNotes: deliveryNotes || '',
+                              }),
                             });
-                            if (!proceed) return;
-                            try {
-                              const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ status: 'PURCHASED' }),
-                              });
-                              if (response.ok) {
-                                toast.showSuccess('Purchase Order marked as PURCHASED!');
-                                fetchPurchaseOrder();
-                              } else {
-                                const error = await response.json();
-                                toast.showError(error.error || 'Failed to update status');
-                              }
-                            } catch (error) {
-                              console.error('Error updating PO status:', error);
-                              toast.showError('Failed to update Purchase Order status');
+                            if (response.ok) {
+                              toast.showSuccess('Purchase Order marked as RECEIVED! Job Order has been automatically set to IN_PROGRESS.');
+                              fetchPurchaseOrder();
+                            } else {
+                              const error = await response.json();
+                              toast.showError(error.error || 'Failed to update status');
                             }
-                          }}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
-                        >
-                          Mark as Purchased
-                        </button>
-                      </div>
-                    )}
+                          } catch (error) {
+                            console.error('Error updating PO status:', error);
+                            toast.showError('Failed to update Purchase Order status');
+                          }
+                        }}
+                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
+                      >
+                        Mark as Received
+                      </button>
+                    </div>
+                  )}
 
-                    {/* Mark as Received */}
-                    {purchaseOrder.status === 'PURCHASED' && (
-                      <div className="p-3 bg-green-50 rounded-md border border-green-200">
-                        <p className="text-sm text-gray-700 mb-2">
-                          <strong>Step 2:</strong> Mark as Received when the items have been delivered. This will automatically set the Job Order status to IN_PROGRESS.
+                  {/* Status Display for Received/Closed */}
+                  {(purchaseOrder.status === 'RECEIVED' || purchaseOrder.status === 'CLOSED') && (
+                    <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
+                      <p className="text-sm text-gray-700">
+                        <strong>Status:</strong> Purchase Order has been {purchaseOrder.status.toLowerCase()}.
+                      </p>
+                      {purchaseOrder.actualDeliveryDate && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          <strong>Actual Delivery Date:</strong> {new Date(purchaseOrder.actualDeliveryDate).toLocaleDateString()}
                         </p>
-                        <div className="space-y-2 mb-3">
-                          <label className="block text-sm font-medium text-gray-700">
-                            Actual Delivery Date:
-                          </label>
-                          <input
-                            type="date"
-                            id="actualDeliveryDate"
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                            defaultValue={purchaseOrder.actualDeliveryDate ? new Date(purchaseOrder.actualDeliveryDate).toISOString().split('T')[0] : ''}
-                          />
-                          <label className="block text-sm font-medium text-gray-700 mt-2">
-                            Delivery Notes (optional):
-                          </label>
-                          <textarea
-                            id="deliveryNotes"
-                            rows={3}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                            placeholder="Enter any notes about the delivery..."
-                            defaultValue={purchaseOrder.deliveryNotes || ''}
-                          />
-                        </div>
-                        <button
-                          onClick={async () => {
-                            const proceed = await confirm('Mark this Purchase Order as RECEIVED? This will automatically set the Job Order to IN_PROGRESS.', {
-                              title: 'Mark as Received',
-                              confirmButtonColor: 'green',
-                            });
-                            if (!proceed) return;
-                            try {
-                              const actualDeliveryDate = (document.getElementById('actualDeliveryDate') as HTMLInputElement)?.value;
-                              const deliveryNotes = (document.getElementById('deliveryNotes') as HTMLTextAreaElement)?.value;
-
-                              const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  status: 'RECEIVED',
-                                  actualDeliveryDate: actualDeliveryDate || new Date().toISOString(),
-                                  deliveryNotes: deliveryNotes || '',
-                                }),
-                              });
-                              if (response.ok) {
-                                toast.showSuccess('Purchase Order marked as RECEIVED! Job Order has been automatically set to IN_PROGRESS.');
-                                fetchPurchaseOrder();
-                              } else {
-                                const error = await response.json();
-                                toast.showError(error.error || 'Failed to update status');
-                              }
-                            } catch (error) {
-                              console.error('Error updating PO status:', error);
-                              toast.showError('Failed to update Purchase Order status');
-                            }
-                          }}
-                          className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
-                        >
-                          Mark as Received
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Mark as Closed */}
-                    {purchaseOrder.status === 'RECEIVED' && (
-                      <div className="p-3 bg-purple-50 rounded-md border border-purple-200">
-                        <p className="text-sm text-gray-700 mb-2">
-                          <strong>Step 3:</strong> Close this Purchase Order when all items have been processed and the order is complete.
+                      )}
+                      {purchaseOrder.deliveryNotes && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          <strong>Delivery Notes:</strong> {purchaseOrder.deliveryNotes}
                         </p>
-                        <button
-                          onClick={async () => {
-                            const proceed = await confirm('Close this Purchase Order? This will mark the order as complete and final.', {
-                              title: 'Close Purchase Order',
-                              confirmButtonColor: 'purple',
-                            });
-                            if (!proceed) return;
-                            try {
-                              const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  status: 'CLOSED',
-                                  closedAt: new Date().toISOString(),
-                                }),
-                              });
-                              if (response.ok) {
-                                toast.showSuccess('Purchase Order closed successfully!');
-                                fetchPurchaseOrder();
-                              } else {
-                                const error = await response.json();
-                                toast.showError(error.error || 'Failed to close Purchase Order');
-                              }
-                            } catch (error) {
-                              console.error('Error closing PO:', error);
-                              toast.showError('Failed to close Purchase Order');
-                            }
-                          }}
-                          className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
-                        >
-                          Close Purchase Order
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Status Display for Closed */}
-                    {purchaseOrder.status === 'CLOSED' && (
-                      <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
-                        <p className="text-sm text-gray-700">
-                          <strong>Status:</strong> Purchase Order is closed.
-                        </p>
-                        {purchaseOrder.actualDeliveryDate && (
-                          <p className="text-sm text-gray-600 mt-1">
-                            <strong>Actual Delivery Date:</strong> {new Date(purchaseOrder.actualDeliveryDate).toLocaleDateString()}
-                          </p>
-                        )}
-                        {purchaseOrder.closedAt && (
-                          <p className="text-sm text-gray-600 mt-1">
-                            <strong>Closed Date:</strong> {new Date(purchaseOrder.closedAt).toLocaleDateString()}
-                          </p>
-                        )}
-                        {purchaseOrder.deliveryNotes && (
-                          <p className="text-sm text-gray-600 mt-1">
-                            <strong>Delivery Notes:</strong> {purchaseOrder.deliveryNotes}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
+            )}
           </div>
 
           {/* Delivery Notes */}

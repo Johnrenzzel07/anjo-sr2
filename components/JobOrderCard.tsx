@@ -80,6 +80,10 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
     if (jobOrder.status === 'APPROVED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'COMPLETED' || jobOrder.status === 'REJECTED') {
       return false;
     }
+    // PENDING_CANVASS needs Purchasing action, not approval
+    if (jobOrder.status === 'PENDING_CANVASS') {
+      return true; // Still show as needing action
+    }
 
     const isServiceType = jobOrder.type === 'SERVICE';
 
@@ -145,6 +149,12 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
     // If status is APPROVED, IN_PROGRESS, COMPLETED, or REJECTED, don't show approval messages
     if (jobOrder.status === 'APPROVED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'COMPLETED' || jobOrder.status === 'REJECTED') {
       return '';
+    }
+    // PENDING_CANVASS needs Purchasing action
+    if (jobOrder.status === 'PENDING_CANVASS') {
+      const isPurchasing = normalizeDept(currentUser?.department) === 'purchasing';
+      if (isPurchasing || isManagement) return ''; // Don't show warning to Purchasing users
+      return 'Waiting for Purchasing to add pricing';
     }
 
     const isServiceType = jobOrder.type === 'SERVICE';

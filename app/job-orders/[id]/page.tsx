@@ -24,6 +24,7 @@ export default function JobOrderPage() {
   const [showCreatePO, setShowCreatePO] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ role: UserRole; id: string; name: string; department?: string } | null>(null);
+  const [canvassMaterials, setCanvassMaterials] = useState<any[]>([]);
 
   useEffect(() => {
     // Fetch current user from auth
@@ -67,6 +68,15 @@ export default function JobOrderPage() {
           jo.srId = jo.srId._id.toString();
         }
         setJobOrder(jo);
+
+        // Initialize canvass materials with pricing fields if status is PENDING_CANVASS
+        if (jo.status === 'PENDING_CANVASS' && jo.materials) {
+          setCanvassMaterials(jo.materials.map((mat: any) => ({
+            ...mat,
+            unitPrice: mat.unitPrice || 0,
+            estimatedCost: mat.estimatedCost || 0,
+          })));
+        }
 
         // Mark related notifications as read
         try {
@@ -316,6 +326,129 @@ export default function JobOrderPage() {
           return null;
         })()}
 
+        {/* Canvass Panel for Purchasing Department */}
+        {(() => {
+          const isPendingCanvass = jobOrder.status === 'PENDING_CANVASS';
+          const userDepartment = (currentUser as any)?.department;
+          const userRole = currentUser?.role as string;
+          const normalizedDept = (userDepartment || '').toLowerCase().replace(/\s+department$/, '');
+          const isPurchasing = normalizedDept === 'purchasing' ||
+            userRole === 'SUPER_ADMIN' ||
+            userRole === 'ADMIN';
+
+          if (!isPendingCanvass || !isPurchasing) {
+            return null;
+          }
+
+          return (
+            <div className="mb-6 bg-orange-50 border border-orange-200 rounded-lg p-6">
+              <div className="flex items-start gap-3 mb-4">
+                <svg className="w-6 h-6 text-orange-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                </svg>
+                <div>
+                  <h3 className="text-lg font-semibold text-orange-900">Canvassing Required</h3>
+                  <p className="text-sm text-orange-700 mt-1">
+                    This Material Requisition requires pricing. Please review the materials and add unit prices, then submit for budget approval.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg p-4 border border-orange-200">
+                <h4 className="font-medium text-gray-900 mb-3">Materials to Price:</h4>
+                <div className="space-y-3">
+                  {canvassMaterials.map((mat, index) => (
+                    <div key={mat.id || index} className="p-3 bg-gray-50 rounded border">
+                      <div className="flex items-start justify-between mb-2">
+                        <div>
+                          <span className="font-medium text-gray-900">{mat.item}</span>
+                          {mat.description && <span className="text-gray-500 ml-2">- {mat.description}</span>}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          Qty: {mat.quantity} {mat.unit}
+                          {mat.size && <span className="ml-2">Size: {mat.size}</span>}
+                          {mat.color && <span className="ml-2">Color: {mat.color}</span>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 mt-2">
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Unit Price (₱)</label>
+                          <input
+                            type="number"
+                            value={mat.unitPrice || ''}
+                            onChange={(e) => {
+                              const unitPrice = parseFloat(e.target.value) || 0;
+                              const estimatedCost = unitPrice * (mat.quantity || 1);
+                              setCanvassMaterials(prev => prev.map((m, i) =>
+                                i === index ? { ...m, unitPrice, estimatedCost } : m
+                              ));
+                            }}
+                            placeholder="0.00"
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 mb-1">Est. Cost (₱)</label>
+                          <input
+                            type="number"
+                            value={mat.estimatedCost || ''}
+                            readOnly
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-100 text-gray-700"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 pt-3 border-t border-gray-200 flex justify-between items-center">
+                  <span className="font-medium text-gray-900">Total Estimated Cost:</span>
+                  <span className="text-lg font-bold text-orange-600">
+                    ₱{canvassMaterials.reduce((sum, m) => sum + (m.estimatedCost || 0), 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={async () => {
+                    const confirmed = await confirm(
+                      'Are you ready to submit this for budget approval? The current material prices will be used for the budget calculation.',
+                      { title: 'Submit Canvass', confirmText: 'Submit', confirmButtonColor: 'green' }
+                    );
+                    if (!confirmed) return;
+
+                    try {
+                      const joId = jobOrder.id || (jobOrder as any)._id;
+                      const response = await fetch(`/api/job-orders/${joId}/canvass`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          materials: canvassMaterials,
+                          comments: 'Canvassing completed by Purchasing Department',
+                        }),
+                      });
+
+                      if (response.ok) {
+                        toast.showSuccess('Canvass submitted successfully! Job Order forwarded for budget approval.');
+                        fetchJobOrder(joId);
+                      } else {
+                        const error = await response.json();
+                        toast.showError(error.error || 'Failed to submit canvass');
+                      }
+                    } catch (error) {
+                      console.error('Error submitting canvass:', error);
+                      toast.showError('Failed to submit canvass');
+                    }
+                  }}
+                  className="bg-orange-600 text-white px-6 py-2 rounded-md font-medium hover:bg-orange-700 shadow-sm"
+                >
+                  Submit for Budget Approval
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Show PO link or Create PO button for Material Requisition */}
         {(() => {
           const isMaterialRequisition = jobOrder.type === 'MATERIAL_REQUISITION';
@@ -399,8 +532,8 @@ export default function JobOrderPage() {
                     }}
                     disabled={(jobOrder.type && !isMaterialRequisition) || (isMaterialRequisition && !budgetCleared)}
                     className={`px-6 py-2 rounded-md font-medium shadow-sm ${(jobOrder.type && !isMaterialRequisition) || (isMaterialRequisition && !budgetCleared)
-                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
                       }`}
                   >
                     Create Purchase Order

@@ -239,7 +239,7 @@ export default function AdminDashboard() {
     setSrLoadingMore(true);
     try {
       const currentSrSkip = srSkip;
-      const statusParam = filterStatus !== 'all' ? `&status=${filterStatus}` : '';
+      const statusParam = filterStatus !== 'all' && filterStatus !== 'show_all' ? `&status=${filterStatus}` : (filterStatus === 'all' ? '&status=SUBMITTED' : '');
       const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
 
       const srRes = await fetch(`/api/service-requests?limit=9&skip=${currentSrSkip}${statusParam}${deptParam}`);
@@ -335,7 +335,7 @@ export default function AdminDashboard() {
 
       const currentSrSkip = resetSR ? 0 : srSkip;
       // Include status and department filters in API call
-      const statusParam = filterStatus !== 'all' ? `&status=${filterStatus}` : '';
+      const statusParam = filterStatus !== 'all' && filterStatus !== 'show_all' ? `&status=${filterStatus}` : (filterStatus === 'all' ? '&status=SUBMITTED' : '');
       const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
       // Fetch Job Orders with closed included to properly check for existing JOs
       if (activeTab === 'sr') {
@@ -383,7 +383,7 @@ export default function AdminDashboard() {
       }
 
       const currentJoSkip = resetJO ? 0 : joSkip;
-      const statusParam = filterJOStatus !== 'all' ? `&status=${filterJOStatus}` : '';
+      const statusParam = filterJOStatus !== 'all' && filterJOStatus !== 'show_all' ? `&status=${filterJOStatus}` : '';
       const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
       // Include closed Job Orders when checking for existing JOs (especially when on SR tab)
       const includeClosedParam = (includeClosed || activeTab === 'sr') ? '&includeClosed=true' : '';
@@ -450,7 +450,7 @@ export default function AdminDashboard() {
       }
 
       const currentPoSkip = resetPO ? 0 : poSkip;
-      const statusParam = filterPOStatus !== 'all' ? `&status=${filterPOStatus}` : '';
+      const statusParam = filterPOStatus !== 'all' && filterPOStatus !== 'show_all' ? `&status=${filterPOStatus}` : '';
 
       const poRes = await fetch(`/api/purchase-orders?limit=9&skip=${currentPoSkip}${statusParam}`);
       const poData = await poRes.json();
@@ -829,6 +829,7 @@ export default function AdminDashboard() {
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               >
+                <option value="show_all">All</option>
                 <option value="all">Submitted</option>
                 {/* <option value="SUBMITTED">Submitted</option> */}
                 <option value="APPROVED">Approved</option>
@@ -844,6 +845,7 @@ export default function AdminDashboard() {
                 onChange={(e) => setFilterJOStatus(e.target.value)}
                 className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               >
+                <option value="show_all">All</option>
                 <option value="all">Needs Approval</option>
                 {/* <option value="needs_approval">Needs Approval</option> */}
                 <option value="DRAFT">Draft</option>
@@ -865,6 +867,7 @@ export default function AdminDashboard() {
                   onChange={(e) => setFilterPOStatus(e.target.value)}
                   className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
                 >
+                  <option value="show_all">All</option>
                   <option value="all">Needs Approval</option>
                   {/* <option value="needs_approval">Needs Approval</option> */}
                   {/* <option value="DRAFT">Draft</option>
@@ -981,9 +984,10 @@ export default function AdminDashboard() {
                     return !financeApproved || !managementApproved;
                   }
                 });
-              } else if (filterJOStatus !== 'all') {
+              } else if (filterJOStatus !== 'all' && filterJOStatus !== 'show_all') {
                 filteredJOs = filteredJOs.filter((jo) => jo.status === filterJOStatus);
               }
+              // When filterJOStatus is 'show_all', no filter applied - show all items
 
               return filteredJOs.length > 0 ? (
                 <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
@@ -1025,9 +1029,10 @@ export default function AdminDashboard() {
                     );
                     return !financeApproved || !managementApproved;
                   });
-                } else if (filterPOStatus !== 'all') {
+                } else if (filterPOStatus !== 'all' && filterPOStatus !== 'show_all') {
                   filteredPOs = filteredPOs.filter((po) => po.status === filterPOStatus);
                 }
+                // When filterPOStatus is 'show_all', no filter applied - show all items
 
                 return filteredPOs.length > 0 ? (
                   <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">

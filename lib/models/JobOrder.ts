@@ -7,6 +7,8 @@ const MaterialItemSchema = new Schema({
   description: String,
   quantity: Number,
   unit: String,
+  size: String,
+  color: String,
   estimatedCost: Number,
   source: {
     type: String,
@@ -75,13 +77,13 @@ const MaterialTransferInfoSchema = new Schema({
 const ApprovalSchema = new Schema({
   role: {
     type: String,
-    enum: ['OPERATIONS', 'DEPARTMENT_HEAD', 'FINANCE', 'MANAGEMENT', 'SUPPLIER'],
+    enum: ['OPERATIONS', 'DEPARTMENT_HEAD', 'FINANCE', 'MANAGEMENT', 'SUPPLIER', 'PURCHASING'],
   },
   userId: String,
   userName: String,
   action: {
     type: String,
-    enum: ['PREPARED', 'REVIEWED', 'NOTED', 'APPROVED', 'REJECTED', 'SUBMITTED', 'BUDGET_APPROVED', 'BUDGET_REJECTED'],
+    enum: ['PREPARED', 'REVIEWED', 'NOTED', 'APPROVED', 'REJECTED', 'SUBMITTED', 'BUDGET_APPROVED', 'BUDGET_REJECTED', 'CANVASS_COMPLETED'],
   },
   timestamp: String,
   comments: String,
@@ -176,7 +178,7 @@ const JobOrderSchema = new Schema<IJobOrder>({
   },
   status: {
     type: String,
-    enum: ['DRAFT', 'BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'CLOSED'],
+    enum: ['DRAFT', 'PENDING_CANVASS', 'BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'CLOSED'],
     default: 'DRAFT',
   },
   createdAt: {

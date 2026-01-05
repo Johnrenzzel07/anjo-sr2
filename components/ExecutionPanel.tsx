@@ -22,18 +22,18 @@ function normalizeDept(dept: string | undefined): string {
 // Check if user is the handling department for this service category
 function isHandlingDepartment(userDepartment: string | undefined, serviceCategory: string): boolean {
   const normalizedUserDept = normalizeDept(userDepartment);
-  
+
   // President can handle all
   if (normalizedUserDept === 'president') {
     return true;
   }
-  
+
   const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
   if (!authorizedDepts) {
     // Default to operations for unknown categories
     return normalizedUserDept === 'operations';
   }
-  
+
   return authorizedDepts.includes(normalizedUserDept);
 }
 
@@ -60,22 +60,22 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
   const userRole = currentUser?.role as string;
   const userDepartment = (currentUser as any)?.department;
-  
+
   // Check if user is the handling department for this JO's service category
   const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
   const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
-  
+
   // Handling department, Operations, Admin, or Super Admin can manage execution
   const canManageExecutionRole = isHandlingDept ||
-                                 userRole === 'OPERATIONS' || 
-                                 userRole === 'ADMIN' || 
-                                 userRole === 'SUPER_ADMIN' ||
-                                 (userRole === 'APPROVER' && normalizeDept(userDepartment) === 'operations');
+    userRole === 'OPERATIONS' ||
+    userRole === 'ADMIN' ||
+    userRole === 'SUPER_ADMIN' ||
+    (userRole === 'APPROVER' && normalizeDept(userDepartment) === 'operations');
 
   const isMaterialReq = jobOrder.type === 'MATERIAL_REQUISITION';
   const isServiceType = jobOrder.type === 'SERVICE';
   const hasMaterials = jobOrder.materials && jobOrder.materials.length > 0;
-  
+
   // Check budget approval for Service type with materials
   const financeBudgetApproved = jobOrder.approvals?.some(
     (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
@@ -90,19 +90,19 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
   // For Service type without materials: execution can start once JO is APPROVED
   // For Service type with materials: execution can start once JO is APPROVED AND budget is cleared
   // For Material Requisition: JO must be APPROVED AND a Purchase Order must exist AND material transfer completed
-  const canStartExecution = 
+  const canStartExecution =
     jobOrder.status === 'APPROVED' &&
     canManageExecutionRole &&
     serviceBudgetReady &&
     (!isMaterialReq || (!!hasPurchaseOrder && !!hasCompletedTransfer));
 
-  const canCompleteExecution = 
+  const canCompleteExecution =
     jobOrder.status === 'IN_PROGRESS' &&
     canManageExecutionRole;
 
   const handleStartExecution = async () => {
-    const proceed = await confirm('Start execution for this Job Order? This will set the status to IN_PROGRESS.', {
-      title: 'Start Execution',
+    const proceed = await confirm('Start fulfillment for this Job Order? This will set the status to IN_PROGRESS.', {
+      title: 'Start Fulfillment',
       confirmButtonColor: 'green',
     });
     if (!proceed) {
@@ -120,7 +120,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
       });
 
       if (response.ok) {
-        toast.showSuccess('Execution started successfully!');
+        toast.showSuccess('Fulfillment started successfully!');
         onExecutionUpdate?.();
       } else {
         const error = await response.json();
@@ -135,8 +135,8 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
   };
 
   const handleCompleteExecution = async () => {
-    const proceed = await confirm('Complete execution for this Job Order? This will set the status to COMPLETED.', {
-      title: 'Complete Execution',
+    const proceed = await confirm('Mark this Job Order as fulfilled? This will set the status to COMPLETED.', {
+      title: 'Mark as Fulfilled',
       confirmButtonColor: 'green',
     });
     if (!proceed) {
@@ -154,7 +154,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
       });
 
       if (response.ok) {
-        toast.showSuccess('Execution completed successfully!');
+        toast.showSuccess('Job Order marked as fulfilled!');
         onExecutionUpdate?.();
       } else {
         const error = await response.json();
@@ -179,19 +179,18 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
   return (
     <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Execution Management</h3>
-      
+      <h3 className="text-lg font-semibold text-gray-900 mb-4">Job Order Fulfillment</h3>
+
       {/* Execution Status */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">Current Status:</span>
-          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-            jobOrder.status === 'IN_PROGRESS' 
-              ? 'bg-blue-100 text-blue-800'
-              : jobOrder.status === 'COMPLETED'
+          <span className={`px-3 py-1 rounded-full text-xs font-medium ${jobOrder.status === 'IN_PROGRESS'
+            ? 'bg-blue-100 text-blue-800'
+            : jobOrder.status === 'COMPLETED'
               ? 'bg-green-100 text-green-800'
               : 'bg-gray-100 text-gray-800'
-          }`}>
+            }`}>
             {jobOrder.status.replace(/_/g, ' ')}
           </span>
         </div>
@@ -220,7 +219,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
             ? 'Create a Purchase Order for this Material Requisition Job Order before starting execution.'
             : !hasCompletedTransfer
               ? 'Materials have not yet been fully transferred. Complete the material transfer before starting execution.'
-              : 'A Purchase Order exists and materials are transferred. You can start execution once the status is APPROVED.'}
+              : 'A Purchase Order exists and materials are transferred.'}
         </div>
       )}
 
@@ -244,15 +243,14 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
               const now = new Date();
               const isOverdue = endDate < now && jobOrder.status !== 'COMPLETED';
               const isActive = startDate <= now && endDate >= now && jobOrder.status === 'IN_PROGRESS';
-              
+
               return (
-                <div 
+                <div
                   key={milestone.id || index}
-                  className={`p-3 rounded-md border ${
-                    isOverdue ? 'bg-red-50 border-red-200' :
+                  className={`p-3 rounded-md border ${isOverdue ? 'bg-red-50 border-red-200' :
                     isActive ? 'bg-blue-50 border-blue-200' :
-                    'bg-gray-50 border-gray-200'
-                  }`}
+                      'bg-gray-50 border-gray-200'
+                    }`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
@@ -284,7 +282,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
             disabled={loading}
             className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium text-sm sm:text-base"
           >
-            {loading ? 'Starting...' : 'Start Execution'}
+            {loading ? 'Starting...' : 'Start Fulfillment'}
           </button>
         )}
 
@@ -294,23 +292,23 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
             disabled={loading}
             className="w-full sm:w-auto px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-medium text-sm sm:text-base"
           >
-            {loading ? 'Completing...' : 'Complete Execution'}
+            {loading ? 'Completing...' : 'Mark as Fulfilled'}
           </button>
         )}
 
         {!canStartExecution && !canCompleteExecution && jobOrder.status !== 'COMPLETED' && (
           <p className="text-sm text-gray-500">
-            {jobOrder.status === 'IN_PROGRESS' 
-              ? 'Execution is in progress. Click the button above to complete execution.'
+            {jobOrder.status === 'IN_PROGRESS'
+              ? 'Fulfillment is in progress. Click the button above to mark as fulfilled.'
               : jobOrder.status === 'DRAFT'
                 ? `Job Order is currently ${jobOrder.status}. It must be approved by President first. Once approved, ${handlingDeptName} Department can start execution.`
-              : serviceNeedsBudget && !budgetCleared
-                ? 'Execution can only be started after budget is approved by Finance and President.'
-                : isMaterialReq && !hasPurchaseOrder
-                  ? 'Create a Purchase Order and complete material transfer before starting execution.'
-                  : isMaterialReq && !hasCompletedTransfer
-                    ? 'Complete the material transfer before starting execution.'
-                    : `Execution can only be started by ${handlingDeptName} Department or Admin when Job Order is APPROVED.`}
+                : serviceNeedsBudget && !budgetCleared
+                  ? 'Execution can only be started after budget is approved by Finance and President.'
+                  : isMaterialReq && !hasPurchaseOrder
+                    ? 'Create a Purchase Order and complete material transfer before starting execution.'
+                    : isMaterialReq && !hasCompletedTransfer
+                      ? 'Complete the material transfer before starting fulfillment.'
+                      : `Fulfillment can only be started by ${handlingDeptName} Department or Admin when Job Order is APPROVED.`}
           </p>
         )}
       </div>

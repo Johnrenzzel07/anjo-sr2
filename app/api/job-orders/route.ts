@@ -80,6 +80,7 @@ export async function GET(request: NextRequest) {
           statusPriority: {
             $switch: {
               branches: [
+                { case: { $eq: ['$status', 'PENDING_CANVASS'] }, then: 0 },
                 { case: { $eq: ['$status', 'DRAFT'] }, then: 1 },
                 { case: { $eq: ['$status', 'BUDGET_CLEARED'] }, then: 2 },
                 { case: { $eq: ['$status', 'APPROVED'] }, then: 3 },
@@ -313,7 +314,8 @@ export async function POST(request: NextRequest) {
       },
       acceptance: {},
       approvals: [],
-      status: 'DRAFT',
+      // For Material Requisition, start with PENDING_CANVASS so Purchasing can add pricing first
+      status: jobOrderType === 'MATERIAL_REQUISITION' ? 'PENDING_CANVASS' : 'DRAFT',
     });
 
     // Explicitly set the type field using set() to ensure it's properly set
@@ -367,14 +369,27 @@ export async function POST(request: NextRequest) {
     await jobOrder.populate('srId', 'srNumber requestedBy department');
 
     // Notify relevant approvers about new Job Order
-    const { notifyJobOrderCreated } = await import('@/lib/utils/notifications');
-    await notifyJobOrderCreated(
-      jobOrder._id.toString(),
-      jobOrder.joNumber,
-      jobOrderType as 'SERVICE' | 'MATERIAL_REQUISITION',
-      authUser?.name || 'Unknown User',
-      authUser?.department || 'Unknown Department'
-    );
+    // For Material Requisition, notify Purchasing Department first
+    const { notifyJobOrderCreated, notifyPurchasingForCanvass } = await import('@/lib/utils/notifications');
+
+    if (jobOrderType === 'MATERIAL_REQUISITION') {
+      // Notify Purchasing Department for canvassing
+      await notifyPurchasingForCanvass(
+        jobOrder._id.toString(),
+        jobOrder.joNumber,
+        authUser?.name || 'Unknown User',
+        authUser?.department || 'Unknown Department'
+      );
+    } else {
+      // Standard notification for SERVICE type
+      await notifyJobOrderCreated(
+        jobOrder._id.toString(),
+        jobOrder.joNumber,
+        jobOrderType as 'SERVICE' | 'MATERIAL_REQUISITION',
+        authUser?.name || 'Unknown User',
+        authUser?.department || 'Unknown Department'
+      );
+    }
 
     return NextResponse.json({ jobOrder }, { status: 201 });
   } catch (error: any) {

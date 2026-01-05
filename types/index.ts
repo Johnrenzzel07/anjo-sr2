@@ -4,13 +4,14 @@ export type PriorityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
 export type SRStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 export type JOStatus =
   | 'DRAFT'
+  | 'PENDING_CANVASS'
   | 'BUDGET_CLEARED'
   | 'APPROVED'
   | 'IN_PROGRESS'
   | 'COMPLETED'
   | 'REJECTED'
   | 'CLOSED';
-export type UserRole = 'OPERATIONS' | 'DEPARTMENT_HEAD' | 'FINANCE' | 'MANAGEMENT' | 'SUPPLIER' | 'SUPER_ADMIN' | 'ADMIN';
+export type UserRole = 'OPERATIONS' | 'DEPARTMENT_HEAD' | 'FINANCE' | 'MANAGEMENT' | 'SUPPLIER' | 'PURCHASING' | 'SUPER_ADMIN' | 'ADMIN';
 export type SourceType = 'IN_HOUSE' | 'PURCHASE';
 export type JobOrderType = 'SERVICE' | 'MATERIAL_REQUISITION';
 export type POStatus =
@@ -54,6 +55,8 @@ export interface MaterialItem {
   description: string;
   quantity: number;
   unit: string;
+  size?: string;
+  color?: string;
   estimatedCost: number;
   source: SourceType;
 }
@@ -113,7 +116,7 @@ export interface Approval {
   role: UserRole;
   userId: string;
   userName: string;
-  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'BUDGET_APPROVED' | 'BUDGET_REJECTED';
+  action: 'PREPARED' | 'REVIEWED' | 'NOTED' | 'APPROVED' | 'REJECTED' | 'SUBMITTED' | 'BUDGET_APPROVED' | 'BUDGET_REJECTED' | 'CANVASS_COMPLETED';
   timestamp: string;
   comments?: string;
 }

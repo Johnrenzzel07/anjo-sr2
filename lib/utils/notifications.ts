@@ -19,7 +19,7 @@ interface CreateNotificationParams {
 export async function createNotification(params: CreateNotificationParams) {
   try {
     await connectDB();
-    
+
     const notification = new Notification({
       userId: params.userId,
       type: params.type,
@@ -48,7 +48,7 @@ export async function createNotificationsForUsers(
 ) {
   try {
     await connectDB();
-    
+
     const notifications = userIds.map(userId => ({
       userId,
       type: params.type,
@@ -64,7 +64,7 @@ export async function createNotificationsForUsers(
     if (notifications.length > 0) {
       await Notification.insertMany(notifications);
     }
-    
+
     return notifications;
   } catch (error) {
     console.error('Error creating notifications for users:', error);
@@ -81,16 +81,16 @@ export async function findUsersByRole(
 ): Promise<string[]> {
   try {
     await connectDB();
-    
-    const query: any = { 
+
+    const query: any = {
       role,
       isActive: true,
     };
-    
+
     if (department) {
       query.department = department;
     }
-    
+
     const users = await User.find(query).select('_id');
     return users.map(u => u._id?.toString() || '');
   } catch (error) {
@@ -105,12 +105,12 @@ export async function findUsersByRole(
 export async function findUserByEmail(email: string): Promise<string | null> {
   try {
     await connectDB();
-    
-    const user = await User.findOne({ 
+
+    const user = await User.findOne({
       email: email.toLowerCase().trim(),
       isActive: true,
     }).select('_id');
-    
+
     return user?._id?.toString() || null;
   } catch (error) {
     console.error('Error finding user by email:', error);
@@ -132,7 +132,7 @@ export async function notifyServiceRequestSubmitted(
   try {
     // Notify the REQUESTER'S department head for SR approval
     const deptHeadIds = await findUsersByRole('APPROVER', requesterDepartment);
-    
+
     // Always include super admins
     const superAdminIds = await findUsersByRole('SUPER_ADMIN');
     const allUserIds = [...new Set([...deptHeadIds, ...superAdminIds])];
@@ -169,17 +169,17 @@ export async function notifyHandlingDepartmentForJO(
   try {
     const handlingDepts = getAuthorizedDepartments(serviceCategory);
     let allUserIds: string[] = [];
-    
+
     for (const dept of handlingDepts) {
       const deptHeadIds = await findUsersByRole('APPROVER', dept);
       allUserIds.push(...deptHeadIds);
-      
+
       // Also try with "Department" suffix
       const deptWithSuffix = `${dept} Department`;
       const deptHeadIdsWithSuffix = await findUsersByRole('APPROVER', deptWithSuffix);
       allUserIds.push(...deptHeadIdsWithSuffix);
     }
-    
+
     // Always include super admins
     const superAdminIds = await findUsersByRole('SUPER_ADMIN');
     allUserIds = [...new Set([...allUserIds, ...superAdminIds])];
@@ -278,12 +278,12 @@ export async function notifyJobOrderCreated(
 ) {
   try {
     // Format creator information
-    const creatorInfo = creatorName && creatorDepartment 
+    const creatorInfo = creatorName && creatorDepartment
       ? ` by ${creatorName} (${creatorDepartment})`
-      : creatorName 
-      ? ` by ${creatorName}`
-      : '';
-    
+      : creatorName
+        ? ` by ${creatorName}`
+        : '';
+
     // For Service type: Notify Operations to approve
     // For Material Requisition: Notify Finance and Management
     if (type === 'SERVICE') {
@@ -337,17 +337,17 @@ export async function notifyHandlingDepartmentReadyForExecution(
     const { getAuthorizedDepartments } = await import('@/lib/utils/joAuthorization');
     const handlingDepts = getAuthorizedDepartments(serviceCategory);
     let allUserIds: string[] = [];
-    
+
     for (const dept of handlingDepts) {
       const deptHeadIds = await findUsersByRole('APPROVER', dept);
       allUserIds.push(...deptHeadIds);
-      
+
       // Also try with "Department" suffix
       const deptWithSuffix = `${dept} Department`;
       const deptHeadIdsWithSuffix = await findUsersByRole('APPROVER', deptWithSuffix);
       allUserIds.push(...deptHeadIdsWithSuffix);
     }
-    
+
     // Always include super admins
     const superAdminIds = await findUsersByRole('SUPER_ADMIN');
     allUserIds = [...new Set([...allUserIds, ...superAdminIds])];
@@ -362,7 +362,7 @@ export async function notifyHandlingDepartmentReadyForExecution(
           approverText = ` by ${approverName}`;
         }
       }
-      
+
       await createNotificationsForUsers(allUserIds, {
         type: 'JOB_ORDER_NEEDS_APPROVAL',
         title: `Job Order Approved: ${joNumber}`,
@@ -410,10 +410,10 @@ export async function notifyJobOrderNeedsApproval(
 
     if (userIds.length > 0) {
       // Include previous approver name in message if provided (especially for Management notifications)
-      const approverText = previousApproverName 
-        ? ` (approved by ${previousApproverName})` 
+      const approverText = previousApproverName
+        ? ` (approved by ${previousApproverName})`
         : '';
-      
+
       await createNotificationsForUsers(userIds, {
         type: 'JOB_ORDER_NEEDS_APPROVAL',
         title: `Job Order Needs Approval: ${joNumber}`,
@@ -429,6 +429,48 @@ export async function notifyJobOrderNeedsApproval(
 }
 
 /**
+ * Notify Purchasing Department when a new Material Requisition Job Order is created
+ * This is the first step - Purchasing needs to add pricing/canvass the materials
+ */
+export async function notifyPurchasingForCanvass(
+  jobOrderId: string,
+  joNumber: string,
+  creatorName?: string,
+  creatorDepartment?: string
+) {
+  try {
+    // Find Purchasing users
+    const purchasingIds = await findUsersByRole('APPROVER', 'Purchasing');
+    const purchasingDeptIds = await findUsersByRole('APPROVER', 'Purchasing Department');
+    const superAdminIds = await findUsersByRole('SUPER_ADMIN');
+    const userIds = [...new Set([...purchasingIds, ...purchasingDeptIds, ...superAdminIds])];
+
+    if (userIds.length === 0) {
+      console.warn('No Purchasing Department users found for canvassing');
+      return;
+    }
+
+    // Format creator information
+    const creatorInfo = creatorName && creatorDepartment
+      ? ` by ${creatorName} (${creatorDepartment})`
+      : creatorName
+        ? ` by ${creatorName}`
+        : '';
+
+    await createNotificationsForUsers(userIds, {
+      type: 'JOB_ORDER_NEEDS_APPROVAL',
+      title: `Material Requisition Needs Canvassing: ${joNumber}`,
+      message: `A new Material Requisition ${joNumber} has been created${creatorInfo}. Please add pricing and submit for budget approval.`,
+      link: `/job-orders/${jobOrderId}`,
+      relatedEntityType: 'JOB_ORDER',
+      relatedEntityId: jobOrderId,
+    });
+  } catch (error) {
+    console.error('Error notifying purchasing for canvass:', error);
+  }
+}
+
+/**
  * Notify Purchasing when Material Requisition Job Order budget is approved
  */
 export async function notifyPurchasingBudgetApproved(
@@ -437,7 +479,7 @@ export async function notifyPurchasingBudgetApproved(
 ) {
   try {
     const purchasingIds = await findUsersByRole('APPROVER', 'Purchasing');
-    
+
     if (purchasingIds.length > 0) {
       await createNotificationsForUsers(purchasingIds, {
         type: 'JOB_ORDER_NEEDS_APPROVAL',
@@ -504,11 +546,11 @@ export async function notifyPurchaseOrderNeedsApproval(
     }
 
     // Format creator information
-    const creatorInfo = creatorName && creatorDepartment 
+    const creatorInfo = creatorName && creatorDepartment
       ? ` by ${creatorName} (${creatorDepartment})`
-      : creatorName 
-      ? ` by ${creatorName}`
-      : '';
+      : creatorName
+        ? ` by ${creatorName}`
+        : '';
 
     await createNotificationsForUsers(userIds, {
       type: 'PURCHASE_ORDER_NEEDS_APPROVAL',
@@ -534,11 +576,11 @@ export async function notifyJobOrderExecutionCompleted(
   try {
     // Notify the REQUESTER'S department head (the department that originally requested the SR)
     const deptHeadIds = await findUsersByRole('APPROVER', requesterDepartment);
-    
+
     // Also try with "Department" suffix
     const deptWithSuffix = `${requesterDepartment} Department`;
     const deptHeadIdsWithSuffix = await findUsersByRole('APPROVER', deptWithSuffix);
-    
+
     // Always include super admins
     const superAdminIds = await findUsersByRole('SUPER_ADMIN');
     const allUserIds = [...new Set([...deptHeadIds, ...deptHeadIdsWithSuffix, ...superAdminIds])];
@@ -574,24 +616,24 @@ export async function notifyJobOrderServiceAccepted(
     const { getAuthorizedDepartments } = await import('@/lib/utils/joAuthorization');
     const handlingDepts = getAuthorizedDepartments(serviceCategory);
     let allUserIds: string[] = [];
-    
+
     for (const dept of handlingDepts) {
       // Normalize department name
       const normalizedDept = dept.toLowerCase().replace(/\s+department$/, '').trim();
-      
+
       const deptHeadIds = await findUsersByRole('APPROVER', dept);
       allUserIds.push(...deptHeadIds);
-      
+
       // Also try with normalized name
       const deptHeadIdsNormalized = await findUsersByRole('APPROVER', normalizedDept);
       allUserIds.push(...deptHeadIdsNormalized);
-      
+
       // Also try with "Department" suffix
       const deptWithSuffix = `${normalizedDept} Department`;
       const deptHeadIdsWithSuffix = await findUsersByRole('APPROVER', deptWithSuffix);
       allUserIds.push(...deptHeadIdsWithSuffix);
     }
-    
+
     // Always include super admins
     const superAdminIds = await findUsersByRole('SUPER_ADMIN');
     allUserIds = [...new Set([...allUserIds, ...superAdminIds])];

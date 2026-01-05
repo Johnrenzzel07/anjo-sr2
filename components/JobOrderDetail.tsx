@@ -541,7 +541,7 @@ export default function JobOrderDetail({
               Approve (President)
             </button>
           )}
-          {canApprove('REJECTED') && (
+          {canApprove('REJECTED') && jobOrder.type === 'SERVICE' && (
             <button
               onClick={() => handleApprove('REJECTED')}
               className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 font-medium text-sm sm:text-base"

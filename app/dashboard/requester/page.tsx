@@ -3,10 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ServiceRequest, JobOrder, PurchaseOrder } from '@/types';
-import ServiceRequestCard from '@/components/ServiceRequestCard';
 import StatusBadge from '@/components/StatusBadge';
 import NotificationBell from '@/components/NotificationBell';
 import SettingsMenu from '@/components/SettingsMenu';
+import JobOrderForm from '@/components/JobOrderForm';
+import { useToast } from '@/components/ToastContainer';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
@@ -21,6 +22,10 @@ export default function RequesterDashboard() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [skip, setSkip] = useState(0);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [selectedSR, setSelectedSR] = useState<ServiceRequest | null>(null);
+  const [sortBy, setSortBy] = useState<string>('newest');
+  const toast = useToast();
 
   useEffect(() => {
     fetchUser();
@@ -104,7 +109,7 @@ export default function RequesterDashboard() {
       }
 
       const currentSkip = reset ? 0 : skip;
-      const response = await fetch(`/api/service-requests?limit=9&skip=${currentSkip}`);
+      const response = await fetch(`/api/service-requests?limit=9&skip=${currentSkip}&excludeHasJO=false`);
       if (response.ok) {
         const data = await response.json();
         // Filter to show only requester's own requests
@@ -165,7 +170,7 @@ export default function RequesterDashboard() {
     setLoadingMore(true);
     try {
       const currentSkip = skip;
-      const response = await fetch(`/api/service-requests?limit=9&skip=${currentSkip}`);
+      const response = await fetch(`/api/service-requests?limit=9&skip=${currentSkip}&excludeHasJO=false`);
 
       if (response.ok) {
         const data = await response.json();
@@ -237,6 +242,58 @@ export default function RequesterDashboard() {
     };
   }, [hasMore, loadingMore, searchQuery, skip, user]);
 
+  // Handle creating a Job Order
+  const handleCreateJO = (srId: string) => {
+    const sr = serviceRequests.find(s => s.id === srId || s._id === srId);
+    if (sr) {
+      setSelectedSR(sr);
+      setShowCreateForm(true);
+    }
+  };
+
+  const handleSubmitJO = async (data: {
+    type: string;
+    workDescription?: string;
+    materials: any[];
+    manpower: any;
+    schedule: any[];
+  }) => {
+    if (!selectedSR) return;
+
+    try {
+      const response = await fetch('/api/job-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          srId: selectedSR.id || selectedSR._id,
+          input: {
+            type: data.type,
+            workDescription: data.workDescription,
+            materials: data.materials,
+            manpower: data.manpower,
+            schedule: data.schedule,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setShowCreateForm(false);
+        setSelectedSR(null);
+        // Refresh data to update the hasJO check
+        await fetchRelatedData();
+
+        toast.showSuccess(`Job Order ${result.jobOrder.joNumber} created successfully!`);
+      } else {
+        const error = await response.json();
+        toast.showError(error.error || 'Failed to create Job Order');
+      }
+    } catch (error) {
+      console.error('Error creating Job Order:', error);
+      toast.showError('Failed to create Job Order');
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -291,6 +348,36 @@ export default function RequesterDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Create Job Order Form Modal */}
+        {showCreateForm && selectedSR && (
+          <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900">
+                  Create Job Order (Material Requisition) from {selectedSR.srNumber}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowCreateForm(false);
+                    setSelectedSR(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  ×
+                </button>
+              </div>
+              <JobOrderForm
+                serviceRequest={selectedSR}
+                onSubmit={handleSubmitJO}
+                onCancel={() => {
+                  setShowCreateForm(false);
+                  setSelectedSR(null);
+                }}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white rounded-lg shadow-md p-6">
@@ -321,44 +408,59 @@ export default function RequesterDashboard() {
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <h2 className="text-2xl font-semibold text-gray-900">My Service Requests</h2>
-            {/* Search Bar */}
-            <div className="w-full sm:w-auto sm:min-w-[300px]">
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Search service requests..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
-                />
-                <svg
-                  className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+              {/* Sort Dropdown */}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
+              >
+                <option value="newest">Date: Newest First</option>
+                <option value="oldest">Date: Oldest First</option>
+                <option value="status">Status</option>
+                <option value="priority">Priority</option>
+                <option value="srNumber">SR Number</option>
+              </select>
+              {/* Search Bar */}
+              <div className="w-full sm:w-auto sm:min-w-[250px]">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search service requests..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
                   />
-                </svg>
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  <svg
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
           {(() => {
-            const filteredSRs = searchQuery.trim()
+            // Filter first
+            let filteredSRs = searchQuery.trim()
               ? serviceRequests.filter((sr) => {
                 const query = searchQuery.toLowerCase().trim();
                 return (
@@ -371,7 +473,28 @@ export default function RequesterDashboard() {
                   sr.priority?.toLowerCase().includes(query)
                 );
               })
-              : serviceRequests;
+              : [...serviceRequests];
+
+            // Then sort
+            const priorityOrder: Record<string, number> = { 'URGENT': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3 };
+            const statusOrder: Record<string, number> = { 'SUBMITTED': 0, 'APPROVED': 1, 'REJECTED': 2, 'DRAFT': 3 };
+
+            filteredSRs.sort((a, b) => {
+              switch (sortBy) {
+                case 'newest':
+                  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                case 'oldest':
+                  return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+                case 'status':
+                  return (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+                case 'priority':
+                  return (priorityOrder[a.priority] ?? 99) - (priorityOrder[b.priority] ?? 99);
+                case 'srNumber':
+                  return (a.srNumber || '').localeCompare(b.srNumber || '');
+                default:
+                  return 0;
+              }
+            });
 
             return filteredSRs.length > 0 ? (
               <>
@@ -430,8 +553,8 @@ export default function RequesterDashboard() {
                                           <div className="flex items-center gap-2">
                                             {jo.type && (
                                               <span className={`text-xs px-1.5 py-0.5 rounded ${jo.type === 'SERVICE'
-                                                  ? 'bg-blue-100 text-blue-800'
-                                                  : 'bg-purple-100 text-purple-800'
+                                                ? 'bg-blue-100 text-blue-800'
+                                                : 'bg-purple-100 text-purple-800'
                                                 }`}>
                                                 {jo.type === 'SERVICE' ? 'Service' : 'Material'}
                                               </span>
@@ -469,6 +592,34 @@ export default function RequesterDashboard() {
                                 )}
                               </div>
                             );
+                          })()}
+
+                          {/* Create Job Order Button - Show for APPROVED SRs without a JO */}
+                          {(() => {
+                            const srId = sr.id || sr._id;
+                            const hasJO = jobOrders.some(jo => jo.srId === srId);
+
+                            if (sr.status === 'APPROVED' && !hasJO) {
+                              return (
+                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-md mb-3">
+                                    <p className="text-xs text-blue-700 font-medium">✓ Your request has been approved! You can now create a Material Requisition Job Order.</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      handleCreateJO(srId || '');
+                                    }}
+                                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors text-sm font-medium"
+                                  >
+                                    Create Job Order (Material Requisition)
+                                  </button>
+                                </div>
+                              );
+                            }
+                            return null;
                           })()}
 
                           <div className="text-xs text-gray-500 mt-4 pt-4 border-t">

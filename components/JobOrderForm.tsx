@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ServiceRequest, MaterialItem, ScheduleMilestone, ManpowerAssignment, JobOrderType } from '@/types';
+import { ServiceRequest, MaterialItem, ScheduleMilestone, JobOrderType } from '@/types';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
 interface JobOrderFormProps {
@@ -10,23 +10,16 @@ interface JobOrderFormProps {
     type: JobOrderType;
     workDescription?: string;
     materials: MaterialItem[];
-    manpower: Partial<ManpowerAssignment>;
+    manpower: Record<string, unknown>;
     schedule: ScheduleMilestone[];
   }) => Promise<void>;
   onCancel: () => void;
 }
 
 export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: JobOrderFormProps) {
-  const [type, setType] = useState<JobOrderType>('SERVICE');
+  const [type] = useState<JobOrderType>('MATERIAL_REQUISITION');
   const [workDescription, setWorkDescription] = useState(serviceRequest.workDescription);
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
-  const [manpower, setManpower] = useState<Partial<ManpowerAssignment>>({
-    assignedUnit: '',
-    supervisorInCharge: '',
-    supervisorDept: '',
-    outsource: '',
-    outsourcePrice: undefined,
-  });
   const [schedule, setSchedule] = useState<ScheduleMilestone[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -37,6 +30,8 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
       description: '',
       quantity: 0,
       unit: '',
+      size: '',
+      color: '',
       estimatedCost: 0,
       source: 'PURCHASE',
     }]);
@@ -51,7 +46,7 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
 
   const formatCurrencyWithDecimals = (value: number | string | undefined): string => {
     if (value === '' || value === null || value === undefined) return '';
-    
+
     // Convert to string to handle very large numbers
     let numStr: string;
     if (typeof value === 'string') {
@@ -60,15 +55,15 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
       // For very large numbers, use toFixed to preserve precision
       numStr = value.toFixed(2);
     }
-    
+
     // Split into integer and decimal parts
     const parts = numStr.split('.');
     const integerPart = parts[0] || '0';
     const decimalPart = parts[1] || '00';
-    
+
     // Format integer part with commas
     const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    
+
     // Combine with decimal part (always 2 digits)
     return `${formattedInteger}.${decimalPart.padEnd(2, '0').slice(0, 2)}`;
   };
@@ -82,7 +77,7 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
   const updateMaterial = (index: number, field: keyof MaterialItem | 'unitPrice', value: any) => {
     const updated = [...materials];
     const material = updated[index];
-    
+
     if (field === 'unitPrice') {
       // When unit price changes, calculate estimatedCost = quantity × unitPrice
       const unitPrice = typeof value === 'number' ? value : parseCurrency(String(value));
@@ -105,7 +100,7 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
     } else {
       updated[index] = { ...material, [field]: value };
     }
-    
+
     setMaterials(updated);
   };
 
@@ -135,14 +130,14 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return; // Prevent multiple submissions
-    
+
     setIsSubmitting(true);
     try {
       await onSubmit({
         type,
         workDescription: workDescription !== serviceRequest.workDescription ? workDescription : undefined,
         materials,
-        manpower,
+        manpower: {},
         schedule,
       });
     } catch (error) {
@@ -155,38 +150,16 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Job Order Type */}
+      {/* Job Order Type - Fixed to Material Requisition */}
       <div className="bg-blue-50 border border-blue-200 rounded-md p-4">
-        <label className="block text-sm font-medium text-gray-900 mb-3">
-          Job Order Type <span className="text-red-500">*</span>
+        <label className="block text-sm font-medium text-gray-900 mb-2">
+          Job Order Type
         </label>
-        <div className="flex gap-6">
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="radio"
-              value="SERVICE"
-              checked={type === 'SERVICE'}
-              onChange={(e) => setType(e.target.value as JobOrderType)}
-              className="mr-2 w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-            />
-            <div>
-              <span className="text-sm font-medium text-gray-900">Service</span>
-              <p className="text-xs text-gray-600 mt-0.5">For service work requiring manpower</p>
-            </div>
-          </label>
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="radio"
-              value="MATERIAL_REQUISITION"
-              checked={type === 'MATERIAL_REQUISITION'}
-              onChange={(e) => setType(e.target.value as JobOrderType)}
-              className="mr-2 w-4 h-4 text-blue-600 border-gray-300 focus:ring-blue-500"
-            />
-            <div>
-              <span className="text-sm font-medium text-gray-900">Material Requisition</span>
-              <p className="text-xs text-gray-600 mt-0.5">For purchasing materials (can create PO)</p>
-            </div>
-          </label>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+            Material Requisition
+          </span>
+          <p className="text-xs text-gray-600">For purchasing materials (can create PO)</p>
         </div>
       </div>
 
@@ -203,191 +176,81 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
         />
       </div>
 
-      {/* Materials & Services - Show for Material Requisition and Service type */}
-      {(type === 'MATERIAL_REQUISITION' || type === 'SERVICE') && (
-        <div>
-          <div className="flex justify-between items-center mb-3">
-            <label className="block text-sm font-medium text-gray-700">
-              Materials & Services Required
-            </label>
-            <button
-              type="button"
-              onClick={addMaterial}
-              className="text-sm bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700"
-            >
-              + Add Item
-            </button>
-          </div>
-          <div className="space-y-3">
-            {materials.map((material, index) => (
-              <div key={material.id} className="grid grid-cols-12 gap-2 p-3 bg-gray-50 rounded-md">
-                <input
-                  type="text"
-                  placeholder="Item"
-                  value={material.item}
-                  onChange={(e) => updateMaterial(index, 'item', e.target.value)}
-                  className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Description"
-                  value={material.description}
-                  onChange={(e) => updateMaterial(index, 'description', e.target.value)}
-                  className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
-                />
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  value={material.quantity || ''}
-                  onChange={(e) => {
-                    const qty = parseInt(e.target.value) || 0;
-                    updateMaterial(index, 'quantity', qty);
-                  }}
-                  className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Unit"
-                  value={material.unit}
-                  onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
-                  className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Unit Price"
-                  value={(material as any).unitPrice ? formatCurrency((material as any).unitPrice) : ''}
-                  onChange={(e) => {
-                    // Allow typing with commas, parse and store numeric value
-                    const input = e.target.value.replace(/[^0-9,]/g, '');
-                    const numericValue = parseCurrency(input);
-                    updateMaterial(index, 'unitPrice', numericValue);
-                  }}
-                  className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Est. Cost"
-                  value={material.estimatedCost ? formatCurrency(material.estimatedCost) : ''}
-                  onChange={(e) => {
-                    // Allow typing with commas, parse and store numeric value
-                    const input = e.target.value.replace(/[^0-9,]/g, '');
-                    const numericValue = parseCurrency(input);
-                    updateMaterial(index, 'estimatedCost', numericValue);
-                  }}
-                  className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
-                />
-                <select
-                  value={material.source}
-                  onChange={(e) => updateMaterial(index, 'source', e.target.value)}
-                  className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
-                >
-                  <option value="PURCHASE">Purchase</option>
-                  <option value="IN_HOUSE">In-house</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => removeMaterial(index)}
-                  className="col-span-1 text-red-600 hover:text-red-800 text-sm"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Manpower (only for Service type) */}
-      {type === 'SERVICE' && (
+      {/* Materials Required */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Manpower / Responsibility
-        </label>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <input
-              type="text"
-              placeholder="Assigned Unit / Team"
-              value={manpower.assignedUnit || ''}
-              onChange={(e) => setManpower({ ...manpower, assignedUnit: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            />
-          </div>
-          <div>
-            <input
-              type="text"
-              placeholder="Supervisor-in-Charge"
-              value={manpower.supervisorInCharge || ''}
-              onChange={(e) => setManpower({ ...manpower, supervisorInCharge: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            />
-          </div>
-          <div>
-            <input
-              type="text"
-              placeholder="Supervisor Department"
-              value={manpower.supervisorDept || ''}
-              onChange={(e) => setManpower({ ...manpower, supervisorDept: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            />
-          </div>
-          <div>
-            <input
-              type="text"
-              placeholder="Outsource (Optional)"
-              value={manpower.outsource || ''}
-              onChange={(e) => setManpower({ ...manpower, outsource: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-            />
-          </div>
+        <div className="flex justify-between items-center mb-3">
+          <label className="block text-sm font-medium text-gray-700">
+            Materials Required
+          </label>
+          <button
+            type="button"
+            onClick={addMaterial}
+            className="text-sm bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700"
+          >
+            + Add Item
+          </button>
         </div>
-        {/* Outsource Price - only show if outsource is filled */}
-        {manpower.outsource && (
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Outsource Service Price (Optional)
-            </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">₱</span>
+        <div className="space-y-3">
+          {materials.map((material, index) => (
+            <div key={material.id} className="grid grid-cols-12 gap-2 p-3 bg-gray-50 rounded-md">
               <input
                 type="text"
-                placeholder="0"
-                value={manpower.outsourcePrice ? formatCurrency(manpower.outsourcePrice) : ''}
-                onChange={(e) => {
-                  // Remove peso symbol, spaces, and allow only numbers and commas
-                  let cleaned = e.target.value.replace(/[₱\s]/g, '').replace(/[^0-9,]/g, '');
-                  
-                  // Remove all commas first to work with raw number
-                  cleaned = cleaned.replace(/,/g, '');
-                  
-                  // Remove leading zeros but keep at least one digit
-                  if (cleaned.length > 1) {
-                    cleaned = cleaned.replace(/^0+/, '') || '0';
-                  }
-                  
-                  // Format with commas (handle large numbers as string first)
-                  let formatted = '';
-                  if (cleaned) {
-                    // Add commas every 3 digits from right
-                    formatted = cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-                  }
-                  
-                  // Parse back to number for storage (use the cleaned value without commas) and round to whole number
-                  const numValue = cleaned === '' ? undefined : Math.round(Number(cleaned));
-                  
-                  setManpower({ 
-                    ...manpower, 
-                    outsourcePrice: (numValue !== undefined && !isNaN(numValue) && numValue >= 0) ? numValue : undefined 
-                  });
-                }}
-                className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-md"
+                placeholder="Item no."
+                value={material.item}
+                onChange={(e) => updateMaterial(index, 'item', e.target.value)}
+                className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
               />
+              <input
+                type="text"
+                placeholder="Description"
+                value={material.description}
+                onChange={(e) => updateMaterial(index, 'description', e.target.value)}
+                className="col-span-4 px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+              <input
+                type="number"
+                placeholder="Qty"
+                value={material.quantity || ''}
+                onChange={(e) => {
+                  const qty = parseInt(e.target.value) || 0;
+                  updateMaterial(index, 'quantity', qty);
+                }}
+                className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Unit"
+                value={material.unit}
+                onChange={(e) => updateMaterial(index, 'unit', e.target.value)}
+                className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Size"
+                value={material.size || ''}
+                onChange={(e) => updateMaterial(index, 'size', e.target.value)}
+                className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+              <input
+                type="text"
+                placeholder="Color"
+                value={material.color || ''}
+                onChange={(e) => updateMaterial(index, 'color', e.target.value)}
+                className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => removeMaterial(index)}
+                className="col-span-1 text-red-600 hover:text-red-800 text-sm"
+              >
+                ×
+              </button>
             </div>
-            <p className="mt-1 text-xs text-gray-500">Enter amount in Philippine Peso (₱)</p>
-          </div>
-        )}
+          ))}
+        </div>
       </div>
-      )}
+
+
 
       {/* Schedule & Milestones */}
       <div>
