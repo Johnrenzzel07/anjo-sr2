@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ServiceRequest } from '@/types';
 import JobOrderForm from '@/components/JobOrderForm';
@@ -8,7 +8,7 @@ import LoadingSpinner from '@/components/LoadingSpinner';
 import Link from 'next/link';
 import { useToast } from '@/components/ToastContainer';
 
-export default function NewJobOrderPage() {
+function NewJobOrderContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const toast = useToast();
@@ -170,5 +170,17 @@ export default function NewJobOrderPage() {
                 </div>
             </main>
         </div>
+    );
+}
+
+export default function NewJobOrderPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <LoadingSpinner size="78" speed="1.4" color="#3b82f6" />
+            </div>
+        }>
+            <NewJobOrderContent />
+        </Suspense>
     );
 }
