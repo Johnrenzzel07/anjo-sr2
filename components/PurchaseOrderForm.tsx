@@ -8,7 +8,6 @@ interface PurchaseOrderFormProps {
   jobOrder: JobOrder;
   onSubmit: (data: {
     items: PurchaseOrderItem[];
-    tax?: number;
   }) => void;
   onCancel: () => void;
 }
@@ -16,7 +15,6 @@ interface PurchaseOrderFormProps {
 export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: PurchaseOrderFormProps) {
   const toast = useToast();
   const [items, setItems] = useState<PurchaseOrderItem[]>([]);
-  const [tax, setTax] = useState(0);
 
   // Format currency with commas
   const formatCurrency = (value: number): string => {
@@ -39,6 +37,8 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
           materialItemId: material.id,
           item: material.item,
           description: material.description,
+          color: material.color || '',
+          size: material.size || '',
           quantity: material.quantity,
           unit: material.unit,
           unitPrice: material.estimatedCost / material.quantity || 0,
@@ -58,12 +58,12 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
   const updateItem = (index: number, field: keyof PurchaseOrderItem, value: any) => {
     const updated = [...items];
     updated[index] = { ...updated[index], [field]: value };
-    
+
     // Recalculate totalPrice if quantity or unitPrice changes
     if (field === 'quantity' || field === 'unitPrice') {
       updated[index].totalPrice = (updated[index].quantity || 0) * (updated[index].unitPrice || 0);
     }
-    
+
     setItems(updated);
   };
 
@@ -83,23 +83,7 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
     setItems(updated);
   };
 
-  const addItem = () => {
-    setItems([...items, {
-      id: `po-item-${Date.now()}`,
-      item: '',
-      description: '',
-      quantity: 0,
-      unit: '',
-      unitPrice: 0,
-      totalPrice: 0,
-      supplierInfo: {
-        name: '',
-        contact: '',
-        address: '',
-      },
-      expectedDeliveryDate: '',
-    }]);
-  };
+
 
   const removeItem = (index: number) => {
     setItems(items.filter((_, i) => i !== index));
@@ -107,7 +91,7 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate that all items have supplier info
     const itemsWithoutSupplier = items.filter(item => !item.supplierInfo?.name && !item.supplier);
     if (itemsWithoutSupplier.length > 0) {
@@ -117,29 +101,34 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
 
     onSubmit({
       items,
-      tax,
     });
   };
 
   const subtotal = items.reduce((sum, item) => sum + (item.totalPrice || 0), 0);
-  const totalAmount = subtotal + tax;
+  const totalAmount = subtotal;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Items */}
       <div>
-        <div className="flex justify-between items-center mb-3">
+        <div className="mb-3">
           <label className="block text-sm font-medium text-gray-700">
             Purchase Order Items
           </label>
-          <button
-            type="button"
-            onClick={addItem}
-            className="text-sm bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700"
-          >
-            + Add Item
-          </button>
         </div>
+
+        {/* Header Labels */}
+        <div className="hidden md:grid grid-cols-12 gap-2 px-4 mb-2">
+          <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Item</div>
+          <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Color</div>
+          <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Size</div>
+          <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Description</div>
+          <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Qty</div>
+          <div className="col-span-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Unit</div>
+          <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Unit Price</div>
+          <div className="col-span-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Total</div>
+        </div>
+
         <div className="space-y-4">
           {items.map((item, index) => (
             <div key={item.id} className="p-4 bg-gray-50 rounded-md border border-gray-200">
@@ -150,22 +139,41 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
                   placeholder="Item"
                   value={item.item}
                   onChange={(e) => updateItem(index, 'item', e.target.value)}
-                  className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
+                  readOnly={!!item.materialItemId}
+                  className={`col-span-1 px-2 py-1 border border-gray-300 rounded text-sm ${item.materialItemId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   required
+                />
+                <input
+                  type="text"
+                  placeholder="Color"
+                  value={item.color || ''}
+                  onChange={(e) => updateItem(index, 'color', e.target.value)}
+                  readOnly={!!item.materialItemId}
+                  className={`col-span-1 px-2 py-1 border border-gray-300 rounded text-sm ${item.materialItemId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                />
+                <input
+                  type="text"
+                  placeholder="Size"
+                  value={item.size || ''}
+                  onChange={(e) => updateItem(index, 'size', e.target.value)}
+                  readOnly={!!item.materialItemId}
+                  className={`col-span-1 px-2 py-1 border border-gray-300 rounded text-sm ${item.materialItemId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
                 <input
                   type="text"
                   placeholder="Description"
                   value={item.description}
                   onChange={(e) => updateItem(index, 'description', e.target.value)}
-                  className="col-span-3 px-2 py-1 border border-gray-300 rounded text-sm"
+                  readOnly={!!item.materialItemId}
+                  className={`col-span-2 px-2 py-1 border border-gray-300 rounded text-sm ${item.materialItemId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
                 <input
                   type="number"
                   placeholder="Qty"
                   value={item.quantity || ''}
                   onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
-                  className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                  readOnly={!!item.materialItemId}
+                  className={`col-span-1 px-2 py-1 border border-gray-300 rounded text-sm ${item.materialItemId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   required
                 />
                 <input
@@ -173,7 +181,8 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
                   placeholder="Unit"
                   value={item.unit}
                   onChange={(e) => updateItem(index, 'unit', e.target.value)}
-                  className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                  readOnly={!!item.materialItemId}
+                  className={`col-span-1 px-2 py-1 border border-gray-300 rounded text-sm ${item.materialItemId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                 />
                 <input
                   type="text"
@@ -183,7 +192,8 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
                     const numericValue = parseCurrency(e.target.value);
                     updateItem(index, 'unitPrice', numericValue);
                   }}
-                  className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm"
+                  readOnly={!!item.materialItemId}
+                  className={`col-span-2 px-2 py-1 border border-gray-300 rounded text-sm ${item.materialItemId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   required
                 />
                 <input
@@ -193,15 +203,17 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
                   readOnly
                   className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm bg-gray-100"
                 />
-                <button
-                  type="button"
-                  onClick={() => removeItem(index)}
-                  className="col-span-1 text-red-600 hover:text-red-800 text-sm"
-                >
-                  Remove
-                </button>
+                {!item.materialItemId && (
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    className="col-span-1 text-red-600 hover:text-red-800 text-sm"
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
-              
+
               {/* Supplier Information and Delivery Date for this Item */}
               <div className="mt-3 pt-3 border-t border-gray-300">
                 <p className="text-xs font-medium text-gray-600 mb-2">Supplier for this item:</p>
@@ -248,26 +260,9 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
 
       {/* Financial Summary */}
       <div className="bg-gray-50 rounded-md p-4">
-        <div className="flex justify-between mb-2">
-          <span className="font-medium text-gray-700">Subtotal:</span>
-          <span className="text-gray-900">₱{formatCurrency(subtotal)}</span>
-        </div>
-        <div className="flex justify-between mb-2">
-          <label className="font-medium text-gray-700">
-            Tax:
-            <input
-              type="number"
-              value={tax}
-              onChange={(e) => setTax(parseFloat(e.target.value) || 0)}
-              step="0.01"
-              className="ml-2 w-24 px-2 py-1 border border-gray-300 rounded text-sm"
-            />
-          </label>
-          <span className="text-gray-900">₱{formatCurrency(tax)}</span>
-        </div>
-        <div className="flex justify-between pt-2 border-t border-gray-300">
-          <span className="font-bold text-gray-900">Total Amount:</span>
-          <span className="font-bold text-gray-900">₱{formatCurrency(totalAmount)}</span>
+        <div className="flex justify-between">
+          <span className="font-bold text-gray-900 text-lg">Total Amount:</span>
+          <span className="font-bold text-gray-900 text-lg">₱{formatCurrency(totalAmount)}</span>
         </div>
       </div>
 

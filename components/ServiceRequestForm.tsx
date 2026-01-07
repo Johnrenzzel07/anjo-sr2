@@ -47,18 +47,33 @@ const urgencyLevels = [
 export default function ServiceRequestForm() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
+  const now = new Date();
+
+  // Local date in YYYY-MM-DD format
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const today = `${year}-${month}-${day}`;
+
+  // Local time in HH:mm format
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  const currentTime = `${hours}:${minutes}`;
+
   const [formData, setFormData] = useState<ServiceRequestFormData>({
     requestedBy: '',
     department: '',
     contactEmail: '',
     contactPhone: '',
-    dateOfRequest: '',
-    timeOfRequest: '',
+    dateOfRequest: today,
+    timeOfRequest: currentTime,
     serviceCategory: '',
     requestUrgency: '',
     briefSubject: '',
     detailedDescription: '',
   });
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -107,19 +122,27 @@ export default function ServiceRequestForm() {
     setIsSubmitting(true);
 
     // Validation
-    if (!formData.serviceCategory || formData.serviceCategory === 'Choose') {
-      setError('Please select a Service Category');
-      setIsSubmitting(false);
-      return;
-    }
-
-    if (!formData.requestUrgency || formData.requestUrgency === 'Choose') {
-      setError('Please select Request Urgency');
-      setIsSubmitting(false);
-      return;
-    }
-
     try {
+      let attachmentUrls: string[] = [];
+
+      // Upload files first if any
+      if (attachments.length > 0) {
+        setUploadingFiles(true);
+        for (const file of attachments) {
+          const uploadData = new FormData();
+          uploadData.append('file', file);
+          const uploadRes = await fetch('/api/upload', {
+            method: 'POST',
+            body: uploadData,
+          });
+          if (uploadRes.ok) {
+            const { url } = await uploadRes.json();
+            attachmentUrls.push(url);
+          }
+        }
+        setUploadingFiles(false);
+      }
+
       const response = await fetch('/api/service-requests', {
         method: 'POST',
         headers: {
@@ -130,6 +153,7 @@ export default function ServiceRequestForm() {
           contactPerson: formData.requestedBy,
           priority: formData.requestUrgency,
           workDescription: formData.detailedDescription,
+          attachments: attachmentUrls,
         }),
       });
 
@@ -146,27 +170,38 @@ export default function ServiceRequestForm() {
       console.error('Error submitting form:', err);
     } finally {
       setIsSubmitting(false);
+      setUploadingFiles(false);
     }
   };
 
   const handleClear = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const today = `${year}-${month}-${day}`;
+
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const currentTime = `${hours}:${minutes}`;
+
     setFormData({
       requestedBy: user?.name || '',
       department: user?.department || '',
       contactEmail: user?.email || '',
       contactPhone: '',
-      dateOfRequest: '',
-      timeOfRequest: '',
+      dateOfRequest: today,
+      timeOfRequest: currentTime,
       serviceCategory: '',
       requestUrgency: '',
       briefSubject: '',
       detailedDescription: '',
     });
+    setAttachments([]);
     setError('');
   };
 
-  // Get today's date in YYYY-MM-DD format for date input
-  const today = new Date().toISOString().split('T')[0];
+
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -269,13 +304,10 @@ export default function ServiceRequestForm() {
                   id="dateOfRequest"
                   name="dateOfRequest"
                   value={formData.dateOfRequest}
-                  onChange={handleChange}
-                  max={today}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  readOnly
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-600 cursor-not-allowed"
                 />
-                <div className="absolute right-3 top-2.5 pointer-events-none">
-                  📅
-                </div>
               </div>
             </div>
 
@@ -290,12 +322,10 @@ export default function ServiceRequestForm() {
                   id="timeOfRequest"
                   name="timeOfRequest"
                   value={formData.timeOfRequest}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  readOnly
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-600 cursor-not-allowed"
                 />
-                <div className="absolute right-3 top-2.5 pointer-events-none">
-                  🕐
-                </div>
               </div>
             </div>
           </div>
@@ -374,14 +404,80 @@ export default function ServiceRequestForm() {
             />
           </div>
 
+          {/* Photo Attachments */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Photo Attachments (Optional)
+            </label>
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-blue-400 transition-colors">
+              <div className="space-y-1 text-center">
+                <svg
+                  className="mx-auto h-12 w-12 text-gray-400"
+                  stroke="currentColor"
+                  fill="none"
+                  viewBox="0 0 48 48"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <div className="flex text-sm text-gray-600">
+                  <label
+                    htmlFor="file-upload"
+                    className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none"
+                  >
+                    <span>Upload photos</span>
+                    <input
+                      id="file-upload"
+                      name="file-upload"
+                      type="file"
+                      className="sr-only"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          setAttachments(Array.from(e.target.files));
+                        }
+                      }}
+                    />
+                  </label>
+                  <p className="pl-1 text-gray-500">or drag and drop</p>
+                </div>
+                <p className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
+              </div>
+            </div>
+            {attachments.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {attachments.map((file, idx) => (
+                  <div key={idx} className="relative group">
+                    <div className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 flex items-center gap-1">
+                      <span className="max-w-[150px] truncate">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                        className="text-blue-500 hover:text-red-500 font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Action Buttons */}
           <div className="flex gap-4 pt-4">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || uploadingFiles}
               className="flex-1 bg-purple-600 text-white px-6 py-3 rounded-md font-medium hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isSubmitting ? 'Submitting...' : 'Submit'}
+              {isSubmitting ? (uploadingFiles ? 'Uploading Photos...' : 'Submitting...') : 'Submit'}
             </button>
             <button
               type="button"

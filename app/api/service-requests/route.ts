@@ -202,6 +202,7 @@ export async function POST(request: Request) {
       location: body.location,
       reason: body.reason,
       budgetSource: body.budgetSource,
+      attachments: body.attachments || [],
       status: 'SUBMITTED',
     });
 

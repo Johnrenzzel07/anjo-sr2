@@ -4,6 +4,8 @@ import { JobOrder, UserRole, ApprovalAction } from '@/types';
 import StatusBadge from './StatusBadge';
 import BudgetPanel from '@/components/BudgetPanel';
 import { useApprovalModal } from './useApprovalModal';
+import ImageModal from '@/components/ImageModal';
+import { useState } from 'react';
 
 // Service Category to Department mapping for JO approval
 const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
@@ -61,6 +63,9 @@ export default function JobOrderDetail({
   onStatusChange,
   onBudgetUpdate,
 }: JobOrderDetailProps) {
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   // Helper function to format dates safely
   const formatDate = (dateString: string | undefined | null): string => {
     if (!dateString || !dateString.trim()) return 'N/A';
@@ -76,16 +81,16 @@ export default function JobOrderDetail({
         return formatDate(jobOrder.targetStartDate);
       }
     }
-    // Fallback to earliest milestone start date
+    // Fallback to earliest milestone date
     if (jobOrder.schedule && jobOrder.schedule.length > 0) {
-      const startDates = jobOrder.schedule
-        .map(m => m.startDate)
+      const dates = jobOrder.schedule
+        .map(m => m.date)
         .filter(date => date && date.trim())
         .map(date => new Date(date!))
         .filter(date => !isNaN(date.getTime()))
         .sort((a, b) => a.getTime() - b.getTime());
-      if (startDates.length > 0) {
-        return startDates[0].toLocaleDateString();
+      if (dates.length > 0) {
+        return dates[0].toLocaleDateString();
       }
     }
     return 'N/A';
@@ -98,16 +103,16 @@ export default function JobOrderDetail({
         return formatDate(jobOrder.targetCompletionDate);
       }
     }
-    // Fallback to latest milestone end date
+    // Fallback to latest milestone date
     if (jobOrder.schedule && jobOrder.schedule.length > 0) {
-      const endDates = jobOrder.schedule
-        .map(m => m.endDate)
+      const dates = jobOrder.schedule
+        .map(m => m.date)
         .filter(date => date && date.trim())
         .map(date => new Date(date!))
         .filter(date => !isNaN(date.getTime()))
         .sort((a, b) => b.getTime() - a.getTime());
-      if (endDates.length > 0) {
-        return endDates[0].toLocaleDateString();
+      if (dates.length > 0) {
+        return dates[0].toLocaleDateString();
       }
     }
     return 'N/A';
@@ -456,8 +461,7 @@ export default function JobOrderDetail({
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Activity</th>
-                    <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Start Date</th>
-                    <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">End Date</th>
+                    <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Target Date</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -465,10 +469,7 @@ export default function JobOrderDetail({
                     <tr key={milestone.id}>
                       <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-900">{milestone.activity}</td>
                       <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-600">
-                        {milestone.startDate ? new Date(milestone.startDate).toLocaleDateString() : 'N/A'}
-                      </td>
-                      <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-600">
-                        {milestone.endDate ? new Date(milestone.endDate).toLocaleDateString() : 'N/A'}
+                        {milestone.date ? new Date(milestone.date).toLocaleDateString() : 'N/A'}
                       </td>
                     </tr>
                   ))}
@@ -480,6 +481,46 @@ export default function JobOrderDetail({
           <p className="text-sm text-gray-500">No milestones added yet.</p>
         )}
       </div>
+
+      {/* Photo Attachments */}
+      {jobOrder.attachments && jobOrder.attachments.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Photo Attachments ({jobOrder.attachments.length})
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {jobOrder.attachments.map((url, idx) => (
+              <div key={idx} className="group relative">
+                <button
+                  onClick={() => {
+                    setSelectedImageUrl(url);
+                    setIsModalOpen(true);
+                  }}
+                  className="w-full block aspect-video rounded-xl overflow-hidden border-2 border-gray-100 hover:border-blue-500 transition-all shadow-sm hover:shadow-md bg-gray-50 bg-[url('/logo.png')] bg-[length:40px_40px] bg-center bg-no-repeat text-left"
+                >
+                  <img
+                    src={url}
+                    alt={`Attachment ${idx + 1}`}
+                    className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = "none";
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                    <span className="bg-white/90 text-gray-900 px-3 py-1.5 rounded-full text-xs font-semibold opacity-0 group-hover:opacity-100 transition-opacity shadow-sm">
+                      View Full Resolution
+                    </span>
+                  </div>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Approvals Section */}
       <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
@@ -570,16 +611,12 @@ export default function JobOrderDetail({
               if (jobOrder.approvals && jobOrder.approvals.length > 0) {
                 // Check if it's Material Requisition and budget not cleared
                 if (jobOrder.type === 'MATERIAL_REQUISITION') {
-                  const financeBudgetApproved = jobOrder.approvals.some(
+                  const budgetCleared = jobOrder.approvals.some(
                     (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
                   );
-                  const presidentBudgetApproved = jobOrder.approvals.some(
-                    (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
-                  );
-                  const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
 
                   if (!budgetCleared) {
-                    return 'Budget must be approved by Finance and President before Job Order can be approved.';
+                    return 'Budget must be approved by Finance before Job Order can be approved.';
                   }
                 }
                 return 'You have already provided your approval or no further approvals are needed.';
@@ -597,6 +634,11 @@ export default function JobOrderDetail({
       </div>
 
       {/* Budget Information & Acceptance & Completion are handled by separate panels on the page */}
+      <ImageModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        imageUrl={selectedImageUrl || ''}
+      />
     </div>
   );
 }

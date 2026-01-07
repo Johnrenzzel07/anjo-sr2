@@ -11,10 +11,10 @@ export async function PATCH(
     await connectDB();
     const { id } = await params;
     const body = await request.json();
-    const { 
-      estimatedTotalCost, 
-      budgetSource, 
-      costCenter, 
+    const {
+      estimatedTotalCost,
+      budgetSource,
+      costCenter,
       action // 'APPROVE' or 'REJECT' for budget approval
     } = body;
 
@@ -32,14 +32,14 @@ export async function PATCH(
     const isFinance = user.department === 'Finance';
     const isPresident = user.role === 'SUPER_ADMIN' || user.role === 'ADMIN';
     const canApproveBudget = isFinance || isPresident;
-    
+
     if (!canApproveBudget && action) {
       return NextResponse.json(
-        { error: 'Only Finance and President can approve budgets' },
+        { error: 'Only Finance department can approve budgets' },
         { status: 403 }
       );
     }
-    
+
     // Map user role to approval role for recording
     // Finance department → FINANCE role in approvals
     // SUPER_ADMIN (President) → MANAGEMENT role in approvals
@@ -70,7 +70,7 @@ export async function PATCH(
           return sum + (material.estimatedCost || 0);
         }, 0);
       }
-      
+
       // Add outsource price if available
       if (jobOrder.manpower?.outsourcePrice) {
         calculatedCost = (calculatedCost || 0) + jobOrder.manpower.outsourcePrice;
@@ -88,18 +88,14 @@ export async function PATCH(
     const financeApproved = jobOrder.approvals.some(
       (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
     );
-    
-    // President cannot update or approve budget until Finance has approved
-    // Only block if there's an actual update attempt (action is set, or budget fields are being updated)
-    const isUpdatingBudget = action || 
+
+    // Only block if there's a non-finance attempt to update budget details without bypass
+    const isUpdatingBudget = action ||
       (estimatedTotalCost !== undefined && estimatedTotalCost !== (jobOrder.budget?.estimatedTotalCost || 0));
-    
-    if (isPresident && !financeApproved && isUpdatingBudget) {
-      return NextResponse.json(
-        { error: 'Finance must approve the budget before President can update or approve it' },
-        { status: 400 }
-      );
-    }
+
+    // In this workflow, President can still approve/update, but doesn't have to wait for Finance 
+    // and Finance doesn't have to wait for President.
+    // So we remove the blocking logic here.
 
     // Handle budget approval action
     if (action === 'APPROVE') {
@@ -119,14 +115,13 @@ export async function PATCH(
         });
       }
 
-      // Update status to APPROVED if both Finance and President approved budget
-      const presidentApproved = jobOrder.approvals.some(
-        (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
-      );
+      // Map user role to approval role for recording
+      const isFinNow = approvalRole === 'FINANCE';
+      const isPresNow = approvalRole === 'MANAGEMENT';
 
-      if (financeApproved && presidentApproved) {
+      if (isFinNow || isPresNow) {
         jobOrder.status = 'APPROVED';
-        
+
         // Notify Purchasing if this is a Material Requisition
         if (jobOrder.type === 'MATERIAL_REQUISITION') {
           const { notifyPurchasingBudgetApproved } = await import('@/lib/utils/notifications');
@@ -146,10 +141,10 @@ export async function PATCH(
         timestamp: new Date().toISOString(),
         comments: body.comments || 'Budget rejected',
       });
-      
+
       // Reject both Job Order and Service Request
       jobOrder.status = 'REJECTED';
-      
+
       if (jobOrder.srId) {
         const ServiceRequest = (await import('@/lib/models/ServiceRequest')).default;
         const sr = await ServiceRequest.findById(jobOrder.srId);
@@ -167,25 +162,10 @@ export async function PATCH(
     };
 
     await jobOrder.save();
-    
-    // Notify next approver if needed (Finance approved, notify Management)
-    if (action === 'APPROVE' && isFinance) {
-      const presidentApproved = jobOrder.approvals.some(
-        (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
-      );
-      
-      if (!presidentApproved) {
-        const { notifyJobOrderNeedsApproval } = await import('@/lib/utils/notifications');
-        await notifyJobOrderNeedsApproval(
-          jobOrder._id.toString(),
-          jobOrder.joNumber,
-          'MANAGEMENT',
-          jobOrder.type as 'SERVICE' | 'MATERIAL_REQUISITION',
-          user.name // Include Finance approver name
-        );
-      }
-    }
-    
+
+    // Notify next approver logic is removed as Finance approval is now sufficient.
+    // President can still see and approve if they want, but it's not required for state transition.
+
     // Populate service request for response
     await jobOrder.populate('srId', 'srNumber requestedBy department');
 

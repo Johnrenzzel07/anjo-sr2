@@ -100,13 +100,9 @@ export default function FulfillmentPanel({ jobOrder, currentUser, hasPurchaseOrd
   const hasMaterials = jobOrder.materials && jobOrder.materials.length > 0;
 
   // Check budget approval for Service type with materials
-  const financeBudgetApproved = jobOrder.approvals?.some(
+  const budgetCleared = jobOrder.approvals?.some(
     (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
   );
-  const presidentBudgetApproved = jobOrder.approvals?.some(
-    (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
-  );
-  const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
   const serviceNeedsBudget = isServiceType && hasMaterials;
   const serviceBudgetReady = !serviceNeedsBudget || budgetCleared;
 
@@ -259,7 +255,7 @@ export default function FulfillmentPanel({ jobOrder, currentUser, hasPurchaseOrd
       {serviceNeedsBudget && !budgetCleared && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
           <p className="text-sm text-yellow-800">
-            ⚠️ This Service type Job Order includes materials. Budget must be approved by Finance and President before fulfillment can start.
+            ⚠️ This Service type Job Order includes materials. Budget must be approved by Finance before fulfillment can start.
           </p>
         </div>
       )}
@@ -270,11 +266,10 @@ export default function FulfillmentPanel({ jobOrder, currentUser, hasPurchaseOrd
           <h4 className="text-sm font-medium text-gray-700 mb-2">Schedule Milestones</h4>
           <div className="space-y-2">
             {jobOrder.schedule.map((milestone: any, index: number) => {
-              const startDate = new Date(milestone.startDate);
-              const endDate = new Date(milestone.endDate);
+              const milestoneDate = new Date(milestone.date);
               const now = new Date();
-              const isOverdue = endDate < now && jobOrder.status !== 'COMPLETED';
-              const isActive = startDate <= now && endDate >= now && jobOrder.status === 'IN_PROGRESS';
+              const isOverdue = milestoneDate < now && jobOrder.status !== 'COMPLETED';
+              const isActive = milestoneDate.toDateString() === now.toDateString() && jobOrder.status === 'IN_PROGRESS';
 
               return (
                 <div
@@ -288,7 +283,7 @@ export default function FulfillmentPanel({ jobOrder, currentUser, hasPurchaseOrd
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">{milestone.activity}</p>
                       <p className="text-xs text-gray-600 mt-1">
-                        {startDate.toLocaleDateString()} - {endDate.toLocaleDateString()}
+                        Target Date: {milestoneDate.toLocaleDateString()}
                       </p>
                     </div>
                     {isOverdue && (
@@ -335,7 +330,7 @@ export default function FulfillmentPanel({ jobOrder, currentUser, hasPurchaseOrd
               : jobOrder.status === 'DRAFT'
                 ? `Job Order is currently ${jobOrder.status}. It must be approved by President first. Once approved, ${handlingDeptName} Department can start fulfillment.`
                 : serviceNeedsBudget && !budgetCleared
-                  ? 'Fulfillment can only be started after budget is approved by Finance and President.'
+                  ? 'Fulfillment can only be started after budget is approved by Finance.'
                   : isMaterialReq && !hasPurchaseOrder
                     ? 'Create a Purchase Order and complete material transfer before starting fulfillment.'
                     : isMaterialReq && !hasCompletedTransfer

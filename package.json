@@ -11,6 +11,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.964.0",
+    "@aws-sdk/s3-request-presigner": "^3.964.0",
     "bcryptjs": "^2.4.3",
     "jsonwebtoken": "^9.0.3",
     "ldrs": "^1.1.9",

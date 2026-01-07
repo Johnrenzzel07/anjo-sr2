@@ -25,6 +25,11 @@ export default function PurchaseOrderDetailPage() {
     return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
+  // Normalize department name for comparison
+  const normalizeDept = (dept: string | undefined): string => {
+    return (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
+  };
+
   useEffect(() => {
     // Fetch current user
     fetch('/api/auth/me')
@@ -288,6 +293,8 @@ export default function PurchaseOrderDetailPage() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Color</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit</th>
@@ -300,6 +307,8 @@ export default function PurchaseOrderDetailPage() {
                     purchaseOrder.items.map((item, index) => (
                       <tr key={item.id || index}>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.item}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.color || 'N/A'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.size || 'N/A'}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{item.description}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.quantity}</td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">{item.unit}</td>
@@ -317,7 +326,7 @@ export default function PurchaseOrderDetailPage() {
                 </tbody>
                 <tfoot className="bg-gray-50">
                   <tr>
-                    <td colSpan={5} className="px-4 py-3 text-right text-sm font-medium text-gray-700">
+                    <td colSpan={7} className="px-4 py-3 text-right text-sm font-medium text-gray-700">
                       Subtotal:
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-gray-900">
@@ -326,7 +335,7 @@ export default function PurchaseOrderDetailPage() {
                   </tr>
                   {purchaseOrder.tax && purchaseOrder.tax > 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-4 py-3 text-right text-sm font-medium text-gray-700">
+                      <td colSpan={7} className="px-4 py-3 text-right text-sm font-medium text-gray-700">
                         Tax:
                       </td>
                       <td className="px-4 py-3 text-sm font-bold text-gray-900">
@@ -335,7 +344,7 @@ export default function PurchaseOrderDetailPage() {
                     </tr>
                   ) : null}
                   <tr>
-                    <td colSpan={5} className="px-4 py-3 text-right text-sm font-bold text-gray-900">
+                    <td colSpan={7} className="px-4 py-3 text-right text-sm font-bold text-gray-900">
                       Total Amount:
                     </td>
                     <td className="px-4 py-3 text-sm font-bold text-gray-900">
@@ -384,22 +393,58 @@ export default function PurchaseOrderDetailPage() {
           <div className="mb-6 bg-white rounded-lg shadow-md p-6 border border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Actions</h2>
 
-            {/* Submit Button removed - budget approval happens at JO level, PO approval is automatic when President approves JO budget */}
+            {/* 1. Request Approval (Purchasing) */}
+            {purchaseOrder.status === 'DRAFT' && currentUser && (normalizeDept(currentUser.department) === 'purchasing' || currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
+              <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                <p className="text-sm text-blue-700 mb-3 font-medium">
+                  Ready to request President approval for this Purchase Order?
+                </p>
+                <button
+                  onClick={async () => {
+                    const proceed = await confirm('Submit this Purchase Order for President approval?', {
+                      title: 'Request Approval',
+                      confirmButtonColor: 'blue',
+                    });
+                    if (!proceed) return;
+                    try {
+                      const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'SUBMITTED' }),
+                      });
+                      if (response.ok) {
+                        toast.showSuccess('Purchase Order submitted for approval!');
+                        fetchPurchaseOrder();
+                      } else {
+                        const error = await response.json();
+                        toast.showError(error.error || 'Failed to submit');
+                      }
+                    } catch (err) {
+                      toast.showError('Error submitting for approval');
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"
+                >
+                  Submit for Approval
+                </button>
+              </div>
+            )}
+            {purchaseOrder.status === 'DRAFT' && currentUser && !(normalizeDept(currentUser.department) === 'purchasing' || currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
+              <p className="text-sm text-gray-500 italic">
+                Waiting for Purchasing department to submit this Purchase Order for approval.
+              </p>
+            )}
 
-            {/* Approval Button (for SUBMITTED status) */}
-            {(purchaseOrder.status === 'SUBMITTED' || purchaseOrder.status === 'APPROVED') && currentUser && (
+            {/* 2. President Approval (SUBMITTED status) */}
+            {purchaseOrder.status === 'SUBMITTED' && currentUser && (
               <div className="mb-4">
                 {(() => {
                   const presidentApproved = purchaseOrder.approvals?.some(
                     (a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED'
                   );
-                  const presidentRejected = purchaseOrder.approvals?.some(
-                    (a: any) => a.role === 'MANAGEMENT' && a.action === 'REJECTED'
-                  );
-                  const presidentHasActed = presidentApproved || presidentRejected;
-                  const isPresident = currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN';
+                  const isPresident = currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN' || currentUser.role === 'MANAGEMENT';
 
-                  if (!isPresident || presidentHasActed) return null;
+                  if (!isPresident || presidentApproved) return null;
 
                   return (
                     <div className="flex gap-3">
@@ -505,109 +550,145 @@ export default function PurchaseOrderDetailPage() {
                 })()}
               </div>
             )}
+            {purchaseOrder.status === 'SUBMITTED' && currentUser && !(currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'ADMIN' || currentUser.role === 'MANAGEMENT') && (
+              <p className="text-sm text-gray-500 italic pb-4">
+                This Purchase Order has been submitted and is currently waiting for President approval.
+              </p>
+            )}
 
-            {/* Post-Approval Actions: Mark as Purchased/Received */}
-            {/* Show this block for DRAFT (budget already approved at JO level), APPROVED, PURCHASED, RECEIVED, or CLOSED */}
-            {(purchaseOrder.status === 'DRAFT' || purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED' || purchaseOrder.status === 'RECEIVED') && (
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                {/* <h3 className="text-md font-semibold text-gray-900 mb-3">Post-Approval Actions</h3> */}
-                <div className="space-y-3">
-                  {/* Mark as Received - show for DRAFT, APPROVED, or PURCHASED */}
-                  {(purchaseOrder.status === 'DRAFT' || purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED') && (
-                    <div className="p-3 bg-green-50 rounded-md border border-green-200">
-                      <p className="text-sm text-gray-700 mb-2">
-                        Mark as Received when the items have been delivered. This will automatically set the Job Order status to IN_PROGRESS.
-                      </p>
-                      <div className="space-y-2 mb-3">
-                        <label className="block text-sm font-medium text-gray-700">
-                          Actual Delivery Date:
-                        </label>
-                        <input
-                          type="date"
-                          id="actualDeliveryDate"
-                          className="px-3 py-2 border border-gray-300 rounded-md text-sm"
-                          defaultValue={purchaseOrder.actualDeliveryDate ? new Date(purchaseOrder.actualDeliveryDate).toISOString().split('T')[0] : ''}
-                        />
-                        <label className="block text-sm font-medium text-gray-700 mt-2">
-                          Delivery Notes (optional):
-                        </label>
-                        <textarea
-                          id="deliveryNotes"
-                          rows={3}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                          placeholder="Enter any notes about the delivery..."
-                          defaultValue={purchaseOrder.deliveryNotes || ''}
-                        />
-                      </div>
-                      <button
-                        onClick={async () => {
-                          const proceed = await confirm('Mark this Purchase Order as RECEIVED? This will automatically set the Job Order to IN_PROGRESS.', {
-                            title: 'Mark as Received',
-                            confirmButtonColor: 'green',
-                          });
-                          if (!proceed) return;
-                          try {
-                            const actualDeliveryDate = (document.getElementById('actualDeliveryDate') as HTMLInputElement)?.value;
-                            const deliveryNotes = (document.getElementById('deliveryNotes') as HTMLTextAreaElement)?.value;
+            {/* 3. Mark as Purchased (APPROVED status) */}
+            {purchaseOrder.status === 'APPROVED' && currentUser && (normalizeDept(currentUser.department) === 'purchasing' || currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
+              <div className="mb-6 p-4 bg-purple-50 border border-purple-200 rounded-md">
+                <p className="text-sm text-purple-700 mb-3 font-medium">
+                  Mark this Purchase Order as PURCHASED once the order has been placed with the supplier.
+                </p>
+                <button
+                  onClick={async () => {
+                    const proceed = await confirm('Mark this Purchase Order as PURCHASED?', {
+                      title: 'Mark as Purchased',
+                      confirmButtonColor: 'purple',
+                    });
+                    if (!proceed) return;
+                    try {
+                      const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'PURCHASED' }),
+                      });
+                      if (response.ok) {
+                        toast.showSuccess('Purchase Order marked as PURCHASED!');
+                        fetchPurchaseOrder();
+                      } else {
+                        const error = await response.json();
+                        toast.showError(error.error || 'Failed to update');
+                      }
+                    } catch (err) {
+                      toast.showError('Error updating status');
+                    }
+                  }}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 font-medium"
+                >
+                  Mark as Purchased
+                </button>
+              </div>
+            )}
+            {purchaseOrder.status === 'APPROVED' && currentUser && !(normalizeDept(currentUser.department) === 'purchasing' || currentUser.role === 'ADMIN' || currentUser.role === 'SUPER_ADMIN') && (
+              <p className="text-sm text-gray-500 italic">
+                Purchase Order approved. Waiting for Purchasing to mark as purchased with the supplier.
+              </p>
+            )}
 
-                            const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
-                              method: 'PATCH',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                status: 'RECEIVED',
-                                actualDeliveryDate: actualDeliveryDate || new Date().toISOString(),
-                                deliveryNotes: deliveryNotes || '',
-                              }),
-                            });
-                            if (response.ok) {
-                              toast.showSuccess('Purchase Order marked as RECEIVED! Job Order has been automatically set to IN_PROGRESS.');
-                              fetchPurchaseOrder();
-                            } else {
-                              const error = await response.json();
-                              toast.showError(error.error || 'Failed to update status');
-                            }
-                          } catch (error) {
-                            console.error('Error updating PO status:', error);
-                            toast.showError('Failed to update Purchase Order status');
-                          }
-                        }}
-                        className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
-                      >
-                        Mark as Received
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Status Display for Received/Closed */}
-                  {(purchaseOrder.status === 'RECEIVED') && (
-                    <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
-                      <p className="text-sm text-gray-700">
-                        <strong>Status:</strong> Purchase Order has been {purchaseOrder.status.toLowerCase()}.
-                      </p>
-                      {purchaseOrder.actualDeliveryDate && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          <strong>Actual Delivery Date:</strong> {new Date(purchaseOrder.actualDeliveryDate).toLocaleDateString()}
-                        </p>
-                      )}
-                      {purchaseOrder.deliveryNotes && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          <strong>Delivery Notes:</strong> {purchaseOrder.deliveryNotes}
-                        </p>
-                      )}
-                    </div>
-                  )}
+            {/* 4. Mark as Received (PURCHASED status) */}
+            {purchaseOrder.status === 'PURCHASED' && (
+              <div className="p-3 bg-green-50 rounded-md border border-green-200">
+                <p className="text-sm text-gray-700 mb-2">
+                  Mark as Received when the items have been delivered. This will automatically set the Job Order status to IN_PROGRESS.
+                </p>
+                <div className="space-y-2 mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Actual Delivery Date:
+                  </label>
+                  <input
+                    type="date"
+                    id="actualDeliveryDate"
+                    className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    defaultValue={purchaseOrder.actualDeliveryDate ? new Date(purchaseOrder.actualDeliveryDate).toISOString().split('T')[0] : ''}
+                  />
+                  <label className="block text-sm font-medium text-gray-700 mt-2">
+                    Delivery Notes (optional):
+                  </label>
+                  <textarea
+                    id="deliveryNotes"
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    placeholder="Enter any notes about the delivery..."
+                    defaultValue={purchaseOrder.deliveryNotes || ''}
+                  />
                 </div>
+                <button
+                  onClick={async () => {
+                    const proceed = await confirm('Mark this Purchase Order as RECEIVED? This will automatically set the Job Order to IN_PROGRESS.', {
+                      title: 'Mark as Received',
+                      confirmButtonColor: 'green',
+                    });
+                    if (!proceed) return;
+                    try {
+                      const actualDeliveryDate = (document.getElementById('actualDeliveryDate') as HTMLInputElement)?.value;
+                      const deliveryNotes = (document.getElementById('deliveryNotes') as HTMLTextAreaElement)?.value;
+
+                      const response = await fetch(`/api/purchase-orders/${purchaseOrder.id || purchaseOrder._id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          status: 'RECEIVED',
+                          actualDeliveryDate: actualDeliveryDate || new Date().toISOString(),
+                          deliveryNotes: deliveryNotes || '',
+                        }),
+                      });
+                      if (response.ok) {
+                        toast.showSuccess('Purchase Order marked as RECEIVED! Job Order has been automatically set to IN_PROGRESS.');
+                        fetchPurchaseOrder();
+                      } else {
+                        const error = await response.json();
+                        toast.showError(error.error || 'Failed to update status');
+                      }
+                    } catch (error) {
+                      console.error('Error updating PO status:', error);
+                      toast.showError('Failed to update Purchase Order status');
+                    }
+                  }}
+                  className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
+                >
+                  Mark as Received
+                </button>
+              </div>
+            )}
+
+            {/* Status Display for Received/Closed */}
+            {(purchaseOrder.status === 'RECEIVED') && (
+              <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
+                <p className="text-sm text-gray-700">
+                  <strong>Status:</strong> Purchase Order has been {purchaseOrder.status.toLowerCase()}.
+                </p>
+                {purchaseOrder.actualDeliveryDate && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    <strong>Actual Delivery Date:</strong> {new Date(purchaseOrder.actualDeliveryDate).toLocaleDateString()}
+                  </p>
+                )}
+                {purchaseOrder.deliveryNotes && (
+                  <p className="text-sm text-gray-600 mt-1">
+                    <strong>Delivery Notes:</strong> {purchaseOrder.deliveryNotes}
+                  </p>
+                )}
+              </div>
+            )}
+            {purchaseOrder.deliveryNotes && (
+              <div className="mt-6 border-t pt-6">
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">Delivery Notes</h2>
+                <p className="text-gray-600">{purchaseOrder.deliveryNotes}</p>
               </div>
             )}
           </div>
-
-          {/* Delivery Notes */}
-          {purchaseOrder.deliveryNotes && (
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Delivery Notes</h2>
-              <p className="text-gray-600">{purchaseOrder.deliveryNotes}</p>
-            </div>
-          )}
         </div>
       </div>
       <ConfirmDialog />

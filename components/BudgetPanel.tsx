@@ -71,23 +71,20 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
   );
   const budgetRejected = financeRejected || presidentRejected;
 
-  // Budget is only cleared when BOTH Finance and President have approved the budget specifically
-  // NOT when Job Order status is APPROVED - these are separate approval processes
-  const budgetCleared = financeApproved && presidentApproved;
+  // Budget is cleared once Finance has approved the budget specifically
+  const budgetCleared = financeApproved;
 
   // Check if Service type has materials - if so, it needs budget approval
   const isServiceType = jobOrder.type === 'SERVICE';
   const hasMaterials = jobOrder.materials && jobOrder.materials.length > 0;
   const needsBudgetApproval = !isServiceType || (isServiceType && hasMaterials);
 
-  // Finance can approve anytime (if not already approved by them)
-  // President can only approve AFTER Finance has approved
+  // Finance or President can approve anytime (if not already approved by them)
   // Hide buttons if budget is rejected
-  const canApproveBudget = canEditBudget && !budgetCleared && !budgetRejected && needsBudgetApproval &&
-    (isFinance || (isPresident && financeApproved));
+  const canApproveBudget = canEditBudget && !budgetCleared && !budgetRejected && needsBudgetApproval;
 
-  // President cannot edit budget until Finance has approved
-  const canActuallyEditBudget = isFinance || (isPresident && financeApproved);
+  // President can edit budget anytime as well
+  const canActuallyEditBudget = isFinance || isPresident;
   const hasApproved = financeApproved || presidentApproved;
   const userHasApproved = jobOrder.approvals?.some(
     (a: any) => a.userId === currentUser?.id && (a.action === 'BUDGET_APPROVED' || a.action === 'BUDGET_REJECTED')
@@ -187,20 +184,12 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
       {needsBudgetApproval && budgetCleared && (
         <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-md">
           <p className="text-sm font-medium text-green-800">
-            ✓ Budget Cleared - Approved by Finance and President
+            ✓ Budget Approved by Finance
           </p>
         </div>
       )}
 
-      {/* Budget Approval Status - Show when waiting for approval */}
-      {needsBudgetApproval && hasApproved && !budgetCleared && (
-        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-          <p className="text-sm text-yellow-800">
-            {financeApproved && !presidentApproved && '✓ Finance Approved - Waiting for President approval'}
-            {presidentApproved && !financeApproved && '✓ President Approved - Waiting for Finance approval'}
-          </p>
-        </div>
-      )}
+
 
       {/* Service Type Notice - Only show if no materials */}
       {isServiceType && !hasMaterials && (
@@ -215,7 +204,7 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
       {isServiceType && hasMaterials && !budgetCleared && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
           <p className="text-sm text-yellow-800">
-            ⚠️ This Service type Job Order includes materials and requires budget approval from Finance and President before fulfillment can start.
+            ⚠️ This Service type Job Order includes materials and requires budget approval from Finance before fulfillment can start.
           </p>
         </div>
       )}
@@ -301,15 +290,11 @@ export default function BudgetPanel({ jobOrder, currentUser, onBudgetUpdate }: B
             </>
           )}
 
-          {isPresident && !financeApproved && !budgetCleared && needsBudgetApproval && (
-            <p className="text-sm text-yellow-600 font-medium">
-              ⚠️ Finance must approve the budget before President can approve.
-            </p>
-          )}
+
 
           {!canEditBudget && needsBudgetApproval && (
             <p className="text-sm text-gray-500">
-              Only Finance and President can edit and approve budgets.
+              Only Finance and President can approve budgets.
             </p>
           )}
 

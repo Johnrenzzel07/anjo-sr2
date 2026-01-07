@@ -26,6 +26,27 @@ export default function JobOrderPage() {
   const [currentUser, setCurrentUser] = useState<{ role: UserRole; id: string; name: string; department?: string } | null>(null);
   const [canvassMaterials, setCanvassMaterials] = useState<any[]>([]);
 
+  const formatCurrency = (value: number | string | undefined): string => {
+    if (value === '' || value === null || value === undefined) return '';
+    const num = typeof value === 'string' ? parseFloat(value.replace(/,/g, '')) : value;
+    if (isNaN(num)) return '';
+
+    // Split into integer and decimal parts
+    const parts = num.toFixed(2).split('.');
+    const integerPart = parts[0] || '0';
+    const decimalPart = parts[1] || '00';
+
+    // Format integer part with commas
+    const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+    return `${formattedInteger}.${decimalPart}`;
+  };
+
+  const parseCurrency = (value: string): number => {
+    const cleaned = value.replace(/,/g, '').trim();
+    return cleaned === '' ? 0 : parseFloat(cleaned) || 0;
+  };
+
   useEffect(() => {
     // Fetch current user from auth
     const fetchUser = async () => {
@@ -353,9 +374,9 @@ export default function JobOrderPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
                 </svg>
                 <div>
-                  <h3 className="text-lg font-semibold text-orange-900">Canvassing Required</h3>
+                  <h3 className="text-lg font-semibold text-orange-900">Lowest Canvassed Price</h3>
                   <p className="text-sm text-orange-700 mt-1">
-                    This Material Requisition requires pricing. Please review the materials and add unit prices, then submit for budget approval.
+                    Please input the most competitive lowest prices obtained during your canvassing process. These values will serve as the official basis for budget approval and final procurement.
                   </p>
                 </div>
               </div>
@@ -380,26 +401,29 @@ export default function JobOrderPage() {
                         <div>
                           <label className="block text-xs text-gray-600 mb-1">Unit Price (₱)</label>
                           <input
-                            type="number"
-                            value={mat.unitPrice || ''}
+                            type="text"
+                            value={mat.unitPrice !== undefined && mat.unitPrice !== 0 ? mat.unitPrice.toLocaleString('en-US') : ''}
                             onChange={(e) => {
-                              const unitPrice = parseFloat(e.target.value) || 0;
-                              const estimatedCost = unitPrice * (mat.quantity || 1);
-                              setCanvassMaterials(prev => prev.map((m, i) =>
-                                i === index ? { ...m, unitPrice, estimatedCost } : m
-                              ));
+                              const rawValue = e.target.value.replace(/,/g, '');
+                              if (/^\d*\.?\d*$/.test(rawValue)) {
+                                const unitPrice = parseFloat(rawValue) || 0;
+                                const estimatedCost = unitPrice * (mat.quantity || 1);
+                                setCanvassMaterials(prev => prev.map((m, i) =>
+                                  i === index ? { ...m, unitPrice, estimatedCost } : m
+                                ));
+                              }
                             }}
                             placeholder="0.00"
                             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs text-gray-600 mb-1">Est. Cost (₱)</label>
+                          <label className="block text-xs text-gray-600 mb-1">Lowest Price (₱)</label>
                           <input
-                            type="number"
-                            value={mat.estimatedCost || ''}
+                            type="text"
+                            value={formatCurrency(mat.estimatedCost)}
                             readOnly
-                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-100 text-gray-700"
+                            className="w-full px-3 py-2 border border-gray-200 rounded-md text-sm bg-gray-100 text-gray-700 font-medium"
                           />
                         </div>
                       </div>
@@ -407,7 +431,7 @@ export default function JobOrderPage() {
                   ))}
                 </div>
                 <div className="mt-4 pt-3 border-t border-gray-200 flex justify-between items-center">
-                  <span className="font-medium text-gray-900">Total Estimated Cost:</span>
+                  <span className="font-medium text-gray-900">Total Lowest Price:</span>
                   <span className="text-lg font-bold text-orange-600">
                     ₱{canvassMaterials.reduce((sum, m) => sum + (m.estimatedCost || 0), 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}
                   </span>
@@ -484,13 +508,9 @@ export default function JobOrderPage() {
             (userRole === 'APPROVER' && userDepartment === 'Purchasing');
 
           // Check if budget has been approved (required for Material Requisition)
-          const financeBudgetApproved = jobOrder.approvals?.some(
+          const budgetCleared = jobOrder.approvals?.some(
             (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
           );
-          const presidentBudgetApproved = jobOrder.approvals?.some(
-            (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
-          );
-          const budgetCleared = financeBudgetApproved && presidentBudgetApproved;
 
           // Only show the card if user is authorized
           if (!canCreatePO) {
@@ -520,7 +540,7 @@ export default function JobOrderPage() {
                       {isMaterialRequisition
                         ? budgetCleared
                           ? `This Material Requisition Job Order has ${jobOrder.materials?.length || 0} material(s) ready for purchase`
-                          : 'Budget must be approved by Finance and President before Purchase Order can be created'
+                          : 'Budget must be approved by Finance before Purchase Order can be created'
                         : 'This Job Order has materials that can be converted to a Purchase Order'}
                     </p>
                   </div>
@@ -531,7 +551,7 @@ export default function JobOrderPage() {
                         return;
                       }
                       if (isMaterialRequisition && !budgetCleared) {
-                        toast.showWarning('Budget must be approved by Finance and President before Purchase Order can be created.');
+                        toast.showWarning('Budget must be approved by Finance before Purchase Order can be created.');
                         return;
                       }
                       setShowCreatePO(true);

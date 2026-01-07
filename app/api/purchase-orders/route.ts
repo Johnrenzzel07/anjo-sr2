@@ -223,18 +223,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // For Material Requisition, check if budget has been approved by President
+    // For Material Requisition, check if budget has been approved by Finance
     const approvals = (jobOrder as any)?.approvals || [];
-    const presidentBudgetApproved = approvals.some(
-      (a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
+    const financeBudgetApproved = approvals.some(
+      (a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
     );
 
-    if (!presidentBudgetApproved) {
+    if (!financeBudgetApproved) {
       return NextResponse.json(
         {
           error: 'Budget must be approved before Purchase Order can be created',
-          details: 'The budget for this Material Requisition Job Order must be approved by President before a Purchase Order can be created.',
-          solution: 'Please ensure the budget is approved in the Budget Information section before creating a Purchase Order.'
+          details: 'The budget for this Material Requisition Job Order must be approved by Finance department before a Purchase Order can be created.',
+          solution: 'Please ensure Finance has approved the budget in the Budget Information section before creating a Purchase Order.'
         },
         { status: 400 }
       );

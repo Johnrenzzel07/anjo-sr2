@@ -58,11 +58,9 @@ export default function JobOrderCard({ jobOrder, currentUser, hasUnreadNotificat
   const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
   const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
 
-  // Check if budget is cleared (Approved by Finance and Management)
+  // Check if budget is cleared (Approved by Finance)
   const budgetCleared = jobOrder.approvals?.some((a: any) =>
     a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
-  ) && jobOrder.approvals?.some((a: any) =>
-    a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
   );
 
   const managementApproved = jobOrder.approvals?.some((a: any) =>
@@ -85,24 +83,13 @@ export default function JobOrderCard({ jobOrder, currentUser, hasUnreadNotificat
       return true;
     }
 
-    // Management (President) approval needed for budget and final JO
+    // Management (President) approval
     if (normalizedUserDept === 'president') {
-      const financeApproved = jobOrder.approvals?.some((a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED');
-
-      // President approves budget after Finance
-      if (financeApproved && !jobOrder.approvals?.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED')) {
-        return true;
-      }
-
-      // President approves final JO after budget cleared (for Material Requisition)
-      if (jobOrder.type === 'MATERIAL_REQUISITION' && budgetCleared && jobOrder.status === 'BUDGET_CLEARED') {
-        return true;
-      }
-
-      // President approves final JO (for Service type)
+      // President approves final JO (for Service type) if not already approved
       if (jobOrder.type === 'SERVICE' && jobOrder.status === 'DRAFT' && !managementApproved) {
         return true;
       }
+      return false;
     }
 
     // Purchasing needs to canvass Material Requisitions
@@ -153,8 +140,6 @@ export default function JobOrderCard({ jobOrder, currentUser, hasUnreadNotificat
     );
     const budgetClearedLocal = jobOrder.approvals?.some((a: any) =>
       a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
-    ) && jobOrder.approvals?.some((a: any) =>
-      a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
     );
 
     return jobOrder.type === 'MATERIAL_REQUISITION' &&
@@ -262,7 +247,7 @@ export default function JobOrderCard({ jobOrder, currentUser, hasUnreadNotificat
           </div>
         )}
 
-        {/* Ready for Purchase Order Creation - Show when canvass pricing is approved and user is Purchasing */}
+        {/* Ready for Purchase Order Creation - Show when canvass pricing is approved and budget cleared */}
         {canCreatePO && (
           <div className="mb-4 p-3 bg-green-50 border-2 border-green-300 rounded-md">
             <div className="flex items-center gap-2">
@@ -276,6 +261,23 @@ export default function JobOrderCard({ jobOrder, currentUser, hasUnreadNotificat
             </div>
           </div>
         )}
+
+        {/* Pending Approval Cards */}
+        {jobOrder.type === 'MATERIAL_REQUISITION' && jobOrder.approvals?.some((a: any) => a.action === 'CANVASS_COMPLETED') && !jobOrder.approvals?.some((a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED') && (
+          <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-md">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-yellow-800">Pending for Finance Approval</p>
+                <p className="text-xs text-yellow-700">Budget has been submitted. Waiting for Finance department review.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+
 
         <div className="space-y-2 mb-4">
           <p className="text-sm">

@@ -205,6 +205,7 @@ export async function GET(request: NextRequest) {
           budget: 1,
           acceptance: 1,
           approvals: 1,
+          attachments: 1,
           status: 1,
           materialTransfer: 1,
           createdAt: 1,
@@ -371,6 +372,7 @@ export async function POST(request: NextRequest) {
       },
       acceptance: {},
       approvals: [],
+      attachments: sr.attachments || [],
       // For Material Requisition, start with PENDING_CANVASS so Purchasing can add pricing first
       status: jobOrderType === 'MATERIAL_REQUISITION' ? 'PENDING_CANVASS' : 'DRAFT',
     });

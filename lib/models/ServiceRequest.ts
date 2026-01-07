@@ -88,6 +88,10 @@ const ServiceRequestSchema = new Schema<IServiceRequest>({
     }],
     default: [],
   },
+  attachments: {
+    type: [String],
+    default: [],
+  },
   departmentHeadApproval: {
     approved: Boolean,
     approverName: String,

@@ -27,8 +27,7 @@ const ManpowerAssignmentSchema = new Schema({
 const ScheduleMilestoneSchema = new Schema({
   id: String,
   activity: String,
-  startDate: String,
-  endDate: String,
+  date: String,
 }, { _id: false });
 
 const BudgetInfoSchema = new Schema({
@@ -174,6 +173,10 @@ const JobOrderSchema = new Schema<IJobOrder>({
   },
   approvals: {
     type: [ApprovalSchema],
+    default: [],
+  },
+  attachments: {
+    type: [String],
     default: [],
   },
   status: {

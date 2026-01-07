@@ -52,6 +52,7 @@ export interface ServiceRequest {
     approvedAt: string;
     comments?: string;
   };
+  attachments?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -79,8 +80,7 @@ export interface ManpowerAssignment {
 export interface ScheduleMilestone {
   id: string;
   activity: string;
-  startDate: string;
-  endDate: string;
+  date: string;
 }
 
 export interface BudgetInfo {
@@ -174,6 +174,9 @@ export interface JobOrder {
   // Approvals
   approvals: Approval[];
 
+  // Attachments
+  attachments?: string[];
+
   // Status
   status: JOStatus;
 
@@ -226,6 +229,8 @@ export interface PurchaseOrderItem {
   description: string;
   quantity: number;
   unit: string;
+  size?: string;
+  color?: string;
   unitPrice: number;
   totalPrice: number;
   supplier?: string; // Legacy field for backward compatibility

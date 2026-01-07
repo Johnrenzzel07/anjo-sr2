@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { ServiceRequest, MaterialItem, ScheduleMilestone, JobOrderType } from '@/types';
 import LoadingSpinner from '@/components/LoadingSpinner';
+import ImageModal from '@/components/ImageModal';
+import { useToast } from './ToastContainer';
 
 interface JobOrderFormProps {
   serviceRequest: ServiceRequest;
@@ -17,16 +19,19 @@ interface JobOrderFormProps {
 }
 
 export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: JobOrderFormProps) {
+  const toast = useToast();
   const [type] = useState<JobOrderType>('MATERIAL_REQUISITION');
   const [workDescription, setWorkDescription] = useState(serviceRequest.workDescription);
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [schedule, setSchedule] = useState<ScheduleMilestone[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const addMaterial = () => {
     setMaterials([...materials, {
       id: `mat-${Date.now()}`,
-      item: '',
+      item: (materials.length + 1).toString(),
       description: '',
       quantity: 0,
       unit: '',
@@ -105,15 +110,20 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
   };
 
   const removeMaterial = (index: number) => {
-    setMaterials(materials.filter((_, i) => i !== index));
+    const filtered = materials.filter((_, i) => i !== index);
+    // Re-index item numbers after removal
+    const reindexed = filtered.map((mat, i) => ({
+      ...mat,
+      item: (i + 1).toString()
+    }));
+    setMaterials(reindexed);
   };
 
   const addMilestone = () => {
     setSchedule([...schedule, {
       id: `milestone-${Date.now()}`,
       activity: '',
-      startDate: '',
-      endDate: '',
+      date: '',
     }]);
   };
 
@@ -130,6 +140,12 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return; // Prevent multiple submissions
+
+    // Validation: Require at least one material
+    if (materials.length === 0) {
+      toast.showError('Please add at least one material to the list before creating the Job Order.');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
@@ -176,6 +192,40 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
         />
       </div>
 
+      {/* Attachments from Service Request */}
+      {serviceRequest.attachments && serviceRequest.attachments.length > 0 && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Photo Attachments (from Service Request)
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {serviceRequest.attachments.map((url, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => {
+                  setSelectedImageUrl(url);
+                  setIsModalOpen(true);
+                }}
+                className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-200 hover:border-blue-500 transition-all group"
+              >
+                <img
+                  src={url}
+                  alt={`Attachment ${idx + 1}`}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                />
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                  <svg className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
+                  </svg>
+                </div>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-gray-500 mt-1">These photos will be automatically attached to the Job Order.</p>
+        </div>
+      )}
+
       {/* Materials Required */}
       <div>
         <div className="flex justify-between items-center mb-3">
@@ -197,8 +247,8 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
                 type="text"
                 placeholder="Item no."
                 value={material.item}
-                onChange={(e) => updateMaterial(index, 'item', e.target.value)}
-                className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                readOnly
+                className="col-span-1 px-2 py-1 border border-gray-200 rounded text-sm bg-gray-100 text-gray-500 cursor-not-allowed text-center"
               />
               <input
                 type="text"
@@ -284,15 +334,9 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
               />
               <input
                 type="date"
-                value={milestone.startDate}
-                onChange={(e) => updateMilestone(index, 'startDate', e.target.value)}
-                className="col-span-3 px-2 py-1 border border-gray-300 rounded text-sm"
-              />
-              <input
-                type="date"
-                value={milestone.endDate}
-                onChange={(e) => updateMilestone(index, 'endDate', e.target.value)}
-                className="col-span-3 px-2 py-1 border border-gray-300 rounded text-sm"
+                value={milestone.date}
+                onChange={(e) => updateMilestone(index, 'date', e.target.value)}
+                className="col-span-6 px-2 py-1 border border-gray-300 rounded text-sm"
               />
               <button
                 type="button"
@@ -331,6 +375,11 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
           )}
         </button>
       </div>
+      <ImageModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        imageUrl={selectedImageUrl || ''}
+      />
     </form>
   );
 }
