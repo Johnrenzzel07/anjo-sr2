@@ -146,6 +146,18 @@ export async function PATCH(
         timestamp: new Date().toISOString(),
         comments: body.comments || 'Budget rejected',
       });
+      
+      // Reject both Job Order and Service Request
+      jobOrder.status = 'REJECTED';
+      
+      if (jobOrder.srId) {
+        const ServiceRequest = (await import('@/lib/models/ServiceRequest')).default;
+        const sr = await ServiceRequest.findById(jobOrder.srId);
+        if (sr) {
+          sr.status = 'REJECTED';
+          await sr.save();
+        }
+      }
     }
 
     // Update budget info

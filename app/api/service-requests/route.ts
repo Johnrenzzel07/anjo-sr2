@@ -55,7 +55,11 @@ export async function GET(request: NextRequest) {
 
     if (status === 'everything') {
       // Don't filter by status at all - used for absolute total counts
-    } else if (status && status !== 'all') {
+    } else if (status === 'all') {
+      // When "All" is selected, show ALL statuses without any exclusions
+      // No status filter applied
+    } else if (status) {
+      // Specific status selected
       query.status = status;
     } else if (authUser && authUser.role === 'REQUESTER') {
       // For REQUESTER: Show all their requests including REJECTED (but not DRAFT)
@@ -102,7 +106,8 @@ export async function GET(request: NextRequest) {
     // Get Service Request IDs that already have Job Orders
     // Only exclude SRs with Job Orders when viewing "All Status" (no specific status filter)
     // When a specific status is selected, show all SRs with that status (including ones with Job Orders)
-    const excludeHasJO = searchParams.get('excludeHasJO') !== 'false' && (!status || status === 'all');
+    // When status is explicitly 'all', show everything including SRs with Job Orders
+    const excludeHasJO = searchParams.get('excludeHasJO') !== 'false' && !status;
     let srIdsWithJO: mongoose.Types.ObjectId[] = [];
     if (excludeHasJO) {
       const jobOrders = await JobOrder.find({}, { srId: 1 }).lean();
@@ -209,7 +214,8 @@ export async function POST(request: Request) {
       serviceRequest.srNumber,
       serviceRequest.requestedBy,
       serviceRequest.department,
-      serviceRequest.serviceCategory // Pass service category to notify the correct handling department
+      serviceRequest.serviceCategory, // Pass service category to notify the correct handling department
+      serviceRequest.contactEmail // Pass requester email to notify them
     );
 
     return NextResponse.json({ serviceRequest }, { status: 201 });

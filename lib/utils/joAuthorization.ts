@@ -120,10 +120,10 @@ export function getAuthorizationMessage(serviceCategory: string): string {
   const authorizedDepts = getAuthorizedDepartments(serviceCategory);
   
   if (authorizedDepts.length === 1) {
-    return `Only ${authorizedDepts[0]} Department can create Job Orders for "${serviceCategory}" service requests.`;
+    return `The requester or ${authorizedDepts[0]} Department can create Job Orders for "${serviceCategory}" service requests.`;
   }
   
   const deptList = authorizedDepts.slice(0, -1).join(', ') + ' or ' + authorizedDepts[authorizedDepts.length - 1];
-  return `Only ${deptList} Department can create Job Orders for "${serviceCategory}" service requests.`;
+  return `The requester or ${deptList} Department can create Job Orders for "${serviceCategory}" service requests.`;
 }
 

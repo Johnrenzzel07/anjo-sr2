@@ -86,7 +86,7 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
       updated[index].estimatedCost = quantity * unitPrice;
     } else if (field === 'quantity') {
       // When quantity changes, calculate estimatedCost = quantity × unitPrice
-      const quantity = typeof value === 'number' ? value : (parseInt(String(value)) || 0);
+      const quantity = Math.max(0, typeof value === 'number' ? value : (parseInt(String(value)) || 0));
       updated[index].quantity = quantity;
       const unitPrice = (material as any).unitPrice || 0;
       updated[index].estimatedCost = quantity * unitPrice;
@@ -209,11 +209,17 @@ export default function JobOrderForm({ serviceRequest, onSubmit, onCancel }: Job
               />
               <input
                 type="number"
+                min="0"
                 placeholder="Qty"
                 value={material.quantity || ''}
                 onChange={(e) => {
-                  const qty = parseInt(e.target.value) || 0;
+                  const qty = Math.max(0, parseInt(e.target.value) || 0);
                   updateMaterial(index, 'quantity', qty);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === '-' || e.key === 'e' || e.key === 'E') {
+                    e.preventDefault();
+                  }
                 }}
                 className="col-span-1 px-2 py-1 border border-gray-300 rounded text-sm"
               />

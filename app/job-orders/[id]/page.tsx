@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { JobOrder, ApprovalAction, UserRole, PurchaseOrder } from '@/types';
 import JobOrderDetail from '@/components/JobOrderDetail';
 import PurchaseOrderForm from '@/components/PurchaseOrderForm';
-import ExecutionPanel from '@/components/ExecutionPanel';
+import FulfillmentPanel from '@/components/FulfillmentPanel';
 import AcceptancePanel from '@/components/AcceptancePanel';
 import TransferPanel from '@/components/TransferPanel';
 import StatusBadge from '@/components/StatusBadge';
@@ -88,6 +88,9 @@ export default function JobOrderPage() {
               relatedEntityId: jo.id || jo._id?.toString(),
             }),
           });
+
+          // Trigger NotificationBell refresh
+          window.dispatchEvent(new Event('refreshNotifications'));
         } catch (notifError) {
           console.error('Error marking notifications as read:', notifError);
         }
@@ -137,6 +140,9 @@ export default function JobOrderPage() {
               relatedEntityId: joId,
             }),
           });
+
+          // Trigger NotificationBell refresh
+          window.dispatchEvent(new Event('refreshNotifications'));
         } catch (notifError) {
           console.error('Error marking notifications as read:', notifError);
         }
@@ -304,7 +310,7 @@ export default function JobOrderPage() {
             userRole === 'FINANCE' ||
             userRole === 'DEPARTMENT_HEAD' ||
             isHandlingDept ||
-            (userRole === 'APPROVER' && (normalizeDept(userDepartment) === 'operations' || normalizeDept(userDepartment) === 'finance'));
+            (userRole === 'APPROVER' && (normalizeDept(userDepartment) === 'operations' || normalizeDept(userDepartment) === 'finance' || normalizeDept(userDepartment) === 'purchasing'));
 
           if (!isAuthorized && currentUser) {
             return (
@@ -316,7 +322,7 @@ export default function JobOrderPage() {
                   <div>
                     <p className="text-sm font-medium text-blue-900">View Only Mode</p>
                     <p className="text-xs text-blue-700 mt-1">
-                      You are viewing this Job Order in read-only mode. Only authorized personnel (Operations, Finance, Admin, or Department Heads) can make changes.
+                      You are viewing this Job Order in read-only mode. Only authorized personnel (Operations, Finance, Purchasing, Admin, or Department Heads) can make changes.
                     </p>
                   </div>
                 </div>
@@ -567,14 +573,14 @@ export default function JobOrderPage() {
               </div>
             )}
 
-            {/* Execution Panel (Work starts after transfer) */}
+            {/* Fulfillment Panel (Work starts after transfer) */}
             <div className="mt-6">
-              <ExecutionPanel
+              <FulfillmentPanel
                 jobOrder={jobOrder}
                 currentUser={currentUser || undefined}
                 hasPurchaseOrder={!!purchaseOrder}
                 hasCompletedTransfer={!!jobOrder.materialTransfer?.transferCompleted}
-                onExecutionUpdate={() => fetchJobOrder(params.id as string)}
+                onFulfillmentUpdate={() => fetchJobOrder(params.id as string)}
               />
             </div>
 

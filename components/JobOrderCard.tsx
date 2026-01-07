@@ -47,161 +47,174 @@ function getHandlingDepartmentName(serviceCategory: string): string {
 interface JobOrderCardProps {
   jobOrder: JobOrder;
   currentUser?: { role?: string; department?: string; id?: string };
+  hasUnreadNotification?: boolean;
 }
 
-export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProps) {
-  // Check if current user can approve (hide warning message but show visual highlight)
-  const isFinance = normalizeDept(currentUser?.department) === 'finance' || currentUser?.role === 'FINANCE';
-  const isOperations = normalizeDept(currentUser?.department) === 'operations' || currentUser?.role === 'OPERATIONS';
-  const isManagement = currentUser?.role === 'MANAGEMENT' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
+export default function JobOrderCard({ jobOrder, currentUser, hasUnreadNotification = false }: JobOrderCardProps) {
+  const userRole = currentUser?.role;
+  const userDepartment = currentUser?.department;
 
   // Check if user is the handling department for this JO's service category
-  const isHandlingDept = isHandlingDepartment(currentUser?.department, jobOrder.serviceCategory);
-
-  // Get the handling department name for display
+  const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
   const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
 
-  // For SERVICE type: Creating the JO by the handling department counts as their approval
-  // So only President/Management approval is needed after JO creation
-  // For MATERIAL_REQUISITION: Finance approves budget first, then Management
+  // Check if budget is cleared (Approved by Finance and Management)
+  const budgetCleared = jobOrder.approvals?.some((a: any) =>
+    a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
+  ) && jobOrder.approvals?.some((a: any) =>
+    a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
+  );
 
   const managementApproved = jobOrder.approvals?.some((a: any) =>
-    a.role === 'MANAGEMENT' && a.action === 'APPROVED'
+    a.role === 'MANAGEMENT' && (a.action === 'APPROVED' || a.action === 'BUDGET_APPROVED')
   );
 
-  const financeApproved = jobOrder.approvals?.some((a: any) =>
-    a.role === 'FINANCE' && (a.action === 'NOTED' || a.action === 'BUDGET_APPROVED')
-  );
-
-  // Check if Job Order needs approval (for visual highlight - show even if user can approve)
-  const needsApproval = (() => {
-    if (jobOrder.status === 'CLOSED') return false;
-    // If status is APPROVED, IN_PROGRESS, COMPLETED, or REJECTED, it no longer needs approval
-    if (jobOrder.status === 'APPROVED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'COMPLETED' || jobOrder.status === 'REJECTED') {
-      return false;
-    }
-    // PENDING_CANVASS needs Purchasing action, not approval
-    if (jobOrder.status === 'PENDING_CANVASS') {
-      return true; // Still show as needing action
-    }
-
-    const isServiceType = jobOrder.type === 'SERVICE';
-
-    if (isServiceType) {
-      // Service type: Only needs President approval (creating JO = handling dept approval)
-      return !managementApproved;
-    } else {
-      // Material Requisition needs Finance then Management approval
-      return !financeApproved || !managementApproved;
-    }
-  })();
-
-  // Check if current user needs to approve (for different highlight color)
+  // Check for specialized approval based on user role and department
   const needsUserApproval = (() => {
-    if (jobOrder.status === 'CLOSED') return false;
-    if (!currentUser?.id) return false;
-    if (jobOrder.status === 'REJECTED') return false;
+    if (jobOrder.status === 'REJECTED' || jobOrder.status === 'CLOSED' || jobOrder.status === 'COMPLETED') return false;
 
-    const isServiceType = jobOrder.type === 'SERVICE';
+    const normalizedUserDept = normalizeDept(userDepartment);
 
-    // Check if current user has already approved
-    // For Material Requisition, check both APPROVED and BUDGET_APPROVED actions
-    // For Service type, check APPROVED action
-    const userHasApproved = jobOrder.approvals?.some((a: any) => {
-      if (a.userId !== currentUser.id) return false;
-      if (isServiceType) {
-        // Service type: Check if user approved (APPROVED action)
-        return a.role === 'MANAGEMENT' && a.action === 'APPROVED';
-      } else {
-        // Material Requisition: Check if user approved budget (BUDGET_APPROVED) or JO (APPROVED)
-        if (isFinance) {
-          return a.role === 'FINANCE' && (a.action === 'BUDGET_APPROVED' || a.action === 'NOTED');
-        } else if (isManagement) {
-          return a.role === 'MANAGEMENT' && (a.action === 'APPROVED' || a.action === 'BUDGET_APPROVED');
-        }
+    // Finance approval needed for budget
+    if (normalizedUserDept === 'finance' && !jobOrder.approvals?.some((a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED')) {
+      // For Material Requisition: Needs canvass first
+      if (jobOrder.type === 'MATERIAL_REQUISITION') {
+        const canvassDone = jobOrder.approvals?.some((a: any) => a.role === 'PURCHASING' && a.action === 'CANVASS_COMPLETED');
+        return canvassDone;
       }
-      return false;
-    });
-
-    if (userHasApproved) return false; // User already approved, don't show "Needs Your Approval"
-
-    if (isServiceType) {
-      // Service type: Only President needs to approve
-      if (!managementApproved && isManagement) return true;
-    } else {
-      // Material Requisition: Finance first, then Management
-      if (!financeApproved && isFinance) return true;
-      if (!managementApproved && isManagement && financeApproved) return true;
+      return true;
     }
+
+    // Management (President) approval needed for budget and final JO
+    if (normalizedUserDept === 'president') {
+      const financeApproved = jobOrder.approvals?.some((a: any) => a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED');
+
+      // President approves budget after Finance
+      if (financeApproved && !jobOrder.approvals?.some((a: any) => a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED')) {
+        return true;
+      }
+
+      // President approves final JO after budget cleared (for Material Requisition)
+      if (jobOrder.type === 'MATERIAL_REQUISITION' && budgetCleared && jobOrder.status === 'BUDGET_CLEARED') {
+        return true;
+      }
+
+      // President approves final JO (for Service type)
+      if (jobOrder.type === 'SERVICE' && jobOrder.status === 'DRAFT' && !managementApproved) {
+        return true;
+      }
+    }
+
+    // Purchasing needs to canvass Material Requisitions
+    if (normalizedUserDept === 'purchasing' && jobOrder.type === 'MATERIAL_REQUISITION' && jobOrder.status === 'PENDING_CANVASS') {
+      return !jobOrder.approvals?.some((a: any) => a.role === 'PURCHASING' && a.action === 'CANVASS_COMPLETED');
+    }
+
     return false;
   })();
 
-  // Check if handling department can start execution (for blue border animation)
-  const canStartExecution = (() => {
+  // Generic check if ANY approval is needed for this card (to highlight)
+  const needsApproval = jobOrder.status === 'DRAFT' ||
+    jobOrder.status === 'PENDING_CANVASS' ||
+    jobOrder.status === 'BUDGET_CLEARED';
+
+  // Check if handling department can start fulfillment (for blue border animation)
+  const canStartFulfillment = (() => {
     if (jobOrder.status !== 'APPROVED') return false;
     if (jobOrder.type !== 'SERVICE') return false;
-    // If President has approved and user is handling department, they can start execution
+    // If President has approved and user is handling department, they can start fulfillment
     return managementApproved && isHandlingDept;
   })();
 
-  const approvalMessage = (() => {
-    if (jobOrder.status === 'CLOSED') return '';
-    // If status is APPROVED, IN_PROGRESS, COMPLETED, or REJECTED, don't show approval messages
-    if (jobOrder.status === 'APPROVED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'COMPLETED' || jobOrder.status === 'REJECTED') {
-      return '';
+  const handleCardClick = async () => {
+    // Mark notifications as read if needed
+    if (hasUnreadNotification && jobOrder.id) {
+      try {
+        await fetch('/api/notifications/mark-read-by-entity', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            relatedEntityType: 'JOB_ORDER',
+            relatedEntityId: jobOrder.id || (jobOrder as any)._id,
+          }),
+        });
+        // Refresh notifications across the app
+        window.dispatchEvent(new Event('refreshNotifications'));
+      } catch (error) {
+        console.error('Error marking notifications as read:', error);
+      }
     }
-    // PENDING_CANVASS needs Purchasing action
-    if (jobOrder.status === 'PENDING_CANVASS') {
-      const isPurchasing = normalizeDept(currentUser?.department) === 'purchasing';
-      if (isPurchasing || isManagement) return ''; // Don't show warning to Purchasing users
-      return 'Waiting for Purchasing to add pricing';
-    }
+  };
 
-    const isServiceType = jobOrder.type === 'SERVICE';
+  const canCreatePO = (() => {
+    const isPurchasing = normalizeDept(currentUser?.department) === 'purchasing';
+    const canvassApproved = jobOrder.approvals?.some((a: any) =>
+      a.role === 'PURCHASING' && a.action === 'CANVASS_COMPLETED'
+    );
+    const budgetClearedLocal = jobOrder.approvals?.some((a: any) =>
+      a.role === 'FINANCE' && a.action === 'BUDGET_APPROVED'
+    ) && jobOrder.approvals?.some((a: any) =>
+      a.role === 'MANAGEMENT' && a.action === 'BUDGET_APPROVED'
+    );
 
-    if (isServiceType) {
-      // Service type: Only needs President approval
-      if (!managementApproved) {
-        // Don't show warning to Management users - they can approve
-        if (isManagement) return '';
-        return 'Waiting for President approval';
-      }
-    } else {
-      // For Material Requisition: Finance needs to approve via Budget Panel
-      if (!financeApproved) {
-        // Don't show warning to Finance users - they can approve
-        if (isFinance) return '';
-        return 'Waiting for Finance approval';
-      }
-      if (!managementApproved) {
-        // Don't show warning to Management users - they can approve
-        if (isManagement) return '';
-        return 'Waiting for President approval';
-      }
-    }
-    return '';
+    return jobOrder.type === 'MATERIAL_REQUISITION' &&
+      canvassApproved &&
+      budgetClearedLocal &&
+      isPurchasing &&
+      (jobOrder.status === 'BUDGET_CLEARED' || jobOrder.status === 'APPROVED') &&
+      !jobOrder.hasPurchaseOrder;
+  })();
+
+  // Check if Purchasing can complete material transfer
+  const canTransferMaterials = (() => {
+    const isPurchasing = normalizeDept(currentUser?.department) === 'purchasing' ||
+      currentUser?.role === 'ADMIN' ||
+      currentUser?.role === 'SUPER_ADMIN';
+
+    return jobOrder.type === 'MATERIAL_REQUISITION' &&
+      jobOrder.hasPurchaseOrder &&
+      jobOrder.poStatus === 'RECEIVED' &&
+      !jobOrder.materialTransfer?.transferCompleted &&
+      isPurchasing;
   })();
 
   return (
-    <Link href={`/job-orders/${jobOrder.id || jobOrder._id}`}>
-      <div className={`bg-white rounded-lg shadow-md p-4 sm:p-6 border-2 transition-all cursor-pointer ${needsUserApproval
-        ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
-        : canStartExecution
-          ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
-          : needsApproval
-            ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow'
-            : 'border-gray-200 hover:shadow-lg'
+    <Link href={`/job-orders/${jobOrder.id || jobOrder._id}`} onClick={handleCardClick}>
+      <div className={`bg-white rounded-lg shadow-md p-4 sm:p-6 border-2 transition-all cursor-pointer ${canCreatePO
+        ? 'border-green-500 animate-border-pulse-green hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-green'
+        : canTransferMaterials
+          ? 'border-orange-500 animate-border-pulse-orange hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-orange'
+          : needsUserApproval
+            ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+            : canStartFulfillment
+              ? 'border-blue-500 animate-border-pulse-blue hover:shadow-xl hover:scale-[1.01] animate-pulse-glow-blue'
+              : needsApproval
+                ? 'border-yellow-400 animate-border-pulse hover:shadow-xl hover:scale-[1.01] animate-pulse-glow'
+                : 'border-gray-200 hover:shadow-lg'
         }`}>
         <div className="flex flex-col sm:flex-row justify-between items-start gap-2 sm:gap-0 mb-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-base sm:text-lg font-semibold text-gray-900 break-words">{jobOrder.joNumber}</h3>
+              {canCreatePO && (
+                <span className="bg-green-100 text-green-800 text-xs uppercase font-bold px-3 py-1 rounded-full animate-pulse">
+                  Ready to Create PO
+                </span>
+              )}
+              {canTransferMaterials && (
+                <span className="bg-orange-100 text-orange-800 text-xs uppercase font-bold px-3 py-1 rounded-full animate-pulse">
+                  Ready for Transfer
+                </span>
+              )}
+              {hasUnreadNotification && (
+                <span className="h-2 w-2 bg-red-500 rounded-full flex-shrink-0"></span>
+              )}
               {jobOrder.type && (
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${jobOrder.type === 'SERVICE'
+                <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${jobOrder.type === 'SERVICE'
                   ? 'bg-blue-100 text-blue-800'
                   : 'bg-purple-100 text-purple-800'
                   }`}>
-                  {jobOrder.type === 'SERVICE' ? 'Service' : 'Material Requisition'}
+                  {jobOrder.type.replace('_', ' ')}
                 </span>
               )}
             </div>
@@ -212,52 +225,53 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
           <StatusBadge status={jobOrder.status} type="jo" />
         </div>
 
-        {/* Needs Your Approval Card - Show when current user needs to approve */}
+        {/* Action Required Label */}
         {needsUserApproval && (
+          <div className="mb-4 p-2 bg-blue-50 border border-blue-200 rounded text-center">
+            <p className="text-xs font-bold text-blue-700 animate-pulse">ACTION REQUIRED BY YOUR DEPT</p>
+          </div>
+        )}
+
+        {/* Ready for Fulfillment Card - Show when handling department can start fulfillment */}
+        {canStartFulfillment && (
           <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-300 rounded-md">
             <div className="flex items-center gap-2">
               <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-blue-800">Needs Your Approval</p>
-                <p className="text-xs text-blue-700">
-                  {jobOrder.type === 'SERVICE'
-                    ? 'This Job Order is waiting for your approval as President.'
-                    : !financeApproved
-                      ? 'This Job Order is waiting for your approval as Finance.'
-                      : 'This Job Order is waiting for your approval as President.'}
-                </p>
+                <p className="text-sm font-semibold text-blue-800">Ready for Fulfillment</p>
+                <p className="text-xs text-blue-700">Job Order has been approved. You can now start fulfillment.</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Needs Approval Card - Show for other users (not the approver) */}
-        {needsApproval && !needsUserApproval && approvalMessage && (
-          <div className="mb-4 p-3 bg-yellow-50 border-2 border-yellow-300 rounded-md">
+        {/* Ready for Material Transfer - Show when PO is received and user is Purchasing/Admin */}
+        {canTransferMaterials && (
+          <div className="mb-4 p-3 bg-orange-50 border-2 border-orange-300 rounded-md">
             <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-yellow-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              <svg className="w-5 h-5 text-orange-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
               </svg>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-yellow-800">Needs Approval</p>
-                <p className="text-xs text-yellow-700">{approvalMessage}</p>
+                <p className="text-sm font-semibold text-orange-800">Ready for Material Transfer</p>
+                <p className="text-xs text-orange-700">Purchase Order items have been received. You can now complete the material transfer.</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Ready for Execution Card - Show when handling department can start execution */}
-        {canStartExecution && (
-          <div className="mb-4 p-3 bg-blue-50 border-2 border-blue-300 rounded-md">
+        {/* Ready for Purchase Order Creation - Show when canvass pricing is approved and user is Purchasing */}
+        {canCreatePO && (
+          <div className="mb-4 p-3 bg-green-50 border-2 border-green-300 rounded-md">
             <div className="flex items-center gap-2">
-              <svg className="w-5 h-5 text-blue-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <div className="flex-1">
-                <p className="text-sm font-semibold text-blue-800">Ready for Execution</p>
-                <p className="text-xs text-blue-700">Job Order has been approved. You can now start execution.</p>
+                <p className="text-sm font-semibold text-green-800">Ready to Create Purchase Order</p>
+                <p className="text-xs text-green-700">Pricing approved and budget cleared. You can now create a Purchase Order.</p>
               </div>
             </div>
           </div>
@@ -274,12 +288,12 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
           </p>
           <p className="text-sm">
             <span className="font-medium text-gray-700">Priority:</span>{' '}
-            <span className="text-gray-600">{jobOrder.priorityLevel}</span>
+            <span className="text-gray-600">{jobOrder.priorityLevel || 'N/A'}</span>
           </p>
           <p className="text-sm text-gray-600 line-clamp-2">{jobOrder.workDescription}</p>
         </div>
 
-        {/* Execution Status */}
+        {/* Fulfillment Status */}
         {jobOrder.status === 'IN_PROGRESS' && jobOrder.acceptance?.actualStartDate && (
           <div className="mt-3 p-2 bg-blue-50 rounded-md border border-blue-200">
             <p className="text-xs text-blue-700">
@@ -300,10 +314,9 @@ export default function JobOrderCard({ jobOrder, currentUser }: JobOrderCardProp
 
         <div className="flex justify-between items-center text-xs text-gray-500 mt-4 pt-4 border-t">
           <span>Issued: {new Date(jobOrder.dateIssued).toLocaleDateString()}</span>
-          <span>Materials: {jobOrder.materials.length} items</span>
+          <span>Materials: {jobOrder.materials?.length || 0} items</span>
         </div>
       </div>
     </Link>
   );
 }
-

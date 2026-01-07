@@ -25,6 +25,7 @@ export default function RequesterDashboard() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedSR, setSelectedSR] = useState<ServiceRequest | null>(null);
   const [sortBy, setSortBy] = useState<string>('newest');
+  const [unreadEntityIds, setUnreadEntityIds] = useState<Set<string>>(new Set());
   const toast = useToast();
 
   useEffect(() => {
@@ -35,8 +36,34 @@ export default function RequesterDashboard() {
     if (user) {
       fetchServiceRequests(true);
       fetchRelatedData();
+      fetchUnreadNotifications();
     }
   }, [user]);
+
+  const fetchUnreadNotifications = async () => {
+    if (!user) return;
+
+    try {
+      const response = await fetch('/api/notifications?unreadOnly=true&limit=1000');
+      if (response.ok) {
+        const data = await response.json();
+        const notifications = data.notifications || [];
+        
+        // Track which specific entities have unread notifications
+        const entityIds = new Set<string>();
+
+        notifications.forEach((notif: any) => {
+          if (!notif.isRead && notif.relatedEntityId) {
+            entityIds.add(notif.relatedEntityId);
+          }
+        });
+
+        setUnreadEntityIds(entityIds);
+      }
+    } catch (error) {
+      console.error('Error fetching unread notifications:', error);
+    }
+  };
 
   const fetchRelatedData = async () => {
     try {
@@ -505,7 +532,12 @@ export default function RequesterDashboard() {
                         <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow cursor-pointer">
                           <div className="flex justify-between items-start mb-4">
                             <div>
-                              <h3 className="text-lg font-semibold text-gray-900">{sr.srNumber}</h3>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-semibold text-gray-900">{sr.srNumber}</h3>
+                                {(unreadEntityIds.has(sr.id || '') || unreadEntityIds.has(sr._id?.toString() || '')) && (
+                                  <span className="h-2 w-2 bg-red-500 rounded-full flex-shrink-0"></span>
+                                )}
+                              </div>
                               <p className="text-sm text-gray-500 mt-1">{sr.department}</p>
                             </div>
                             <StatusBadge status={sr.status} type="sr" />

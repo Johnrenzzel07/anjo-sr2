@@ -12,6 +12,8 @@ export default function ServiceRequestDetailPage() {
   const router = useRouter();
   const [serviceRequest, setServiceRequest] = useState<ServiceRequest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [existingJobOrder, setExistingJobOrder] = useState<{ id: string; joNumber: string } | null>(null);
+  const [checkingJobOrder, setCheckingJobOrder] = useState(false);
 
   useEffect(() => {
     if (params.id) {
@@ -30,7 +32,12 @@ export default function ServiceRequestDetailPage() {
           sr.id = sr._id.toString();
         }
         setServiceRequest(sr);
-        
+
+        // Check if job order exists for this SR
+        if (sr.status === 'APPROVED') {
+          await checkForExistingJobOrder(sr.id || sr._id);
+        }
+
         // Mark related notifications as read
         try {
           await fetch('/api/notifications/mark-read-by-entity', {
@@ -51,6 +58,27 @@ export default function ServiceRequestDetailPage() {
       console.error('Error fetching Service Request:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const checkForExistingJobOrder = async (srId: string) => {
+    setCheckingJobOrder(true);
+    try {
+      const response = await fetch(`/api/job-orders?srId=${srId}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.jobOrders && data.jobOrders.length > 0) {
+          const jo = data.jobOrders[0];
+          setExistingJobOrder({
+            id: jo._id || jo.id,
+            joNumber: jo.joNumber,
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error checking for existing job order:', error);
+    } finally {
+      setCheckingJobOrder(false);
     }
   };
 
@@ -91,9 +119,9 @@ export default function ServiceRequestDetailPage() {
           </Link>
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
             <div className="flex items-center gap-2 sm:gap-4">
-              <img 
-                src="/logo.png" 
-                alt="ANJO WORLD" 
+              <img
+                src="/logo.png"
+                alt="ANJO WORLD"
                 className="h-10 w-10 sm:h-12 sm:w-12 object-contain"
               />
               <div>
@@ -107,6 +135,59 @@ export default function ServiceRequestDetailPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Create Job Order Section - Show when SR is approved and check is complete */}
+        {serviceRequest.status === 'APPROVED' && !checkingJobOrder && (
+          existingJobOrder ? (
+            // Job order already exists
+            <div className="bg-white rounded-lg shadow-md border-2 border-green-200 p-6 mb-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="bg-green-100 rounded-full p-2 mt-1">
+                    <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-green-900 mb-1">Job Order Already Created</h3>
+                    <p className="text-sm text-green-700">
+                      A job order has been created for this service request: <span className="font-semibold">{existingJobOrder.joNumber}</span>
+                    </p>
+                  </div>
+                </div>
+                <Link
+                  href={`/job-orders/${existingJobOrder.id}`}
+                  className="w-full px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-semibold shadow-md text-base text-center"
+                >
+                  View Job Order
+                </Link>
+              </div>
+            </div>
+          ) : (
+            // No job order exists, show create button
+            <div className="bg-white rounded-lg shadow-md border-2 border-blue-200 p-6 mb-6">
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="bg-blue-100 rounded-full p-2 mt-1">
+                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-lg font-semibold text-blue-900 mb-1">Ready for Job Order Creation</h3>
+                    <p className="text-sm text-blue-700">You can now create a Job Order for this Service Request</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => router.push(`/job-orders/new?srId=${serviceRequest.id || serviceRequest._id}`)}
+                  className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold shadow-md text-base"
+                >
+                  Create Job Order
+                </button>
+              </div>
+            </div>
+          )
+        )}
+
         <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
           <div className="grid grid-cols-2 gap-6">
             <div>

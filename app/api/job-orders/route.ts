@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const skip = parseInt(searchParams.get('skip') || '0', 10);
     const status = searchParams.get('status'); // Optional status filter
     const department = searchParams.get('department'); // Optional department filter
+    const srId = searchParams.get('srId'); // Optional service request ID filter
 
     // Get current user if authenticated
     const authUser = getAuthUser(request);
@@ -26,12 +27,22 @@ export async function GET(request: NextRequest) {
     // Build base query
     let query: any = {};
 
+    // Filter by service request ID if provided
+    if (srId) {
+      query.srId = srId;
+    }
+
+
     // Apply status filter if provided
     // By default, exclude CLOSED status unless explicitly requested
     const includeClosed = searchParams.get('includeClosed') === 'true';
     if (status === 'everything') {
       // Don't filter by status at all
-    } else if (status && status !== 'all') {
+    } else if (status === 'all') {
+      // When "All" is selected, show ALL statuses without any exclusions
+      // No status filter applied
+    } else if (status) {
+      // Specific status selected
       query.status = status;
     } else {
       // Exclude CLOSED and REJECTED status by default when no specific status is requested
@@ -46,6 +57,25 @@ export async function GET(request: NextRequest) {
 
     if (departmentFilter) {
       const userDeptNorm = normalizeDept(departmentFilter);
+
+      // Finance should not see PENDING_CANVASS status (only Purchasing sees those)
+      if (userDeptNorm === 'finance') {
+        if (query.status && query.status.$nin && Array.isArray(query.status.$nin)) {
+          // Already has $nin array (like ['CLOSED', 'REJECTED']), add PENDING_CANVASS
+          query.status.$nin.push('PENDING_CANVASS');
+        } else if (!query.status) {
+          // No status filter set yet (status='all' or status='everything')
+          query.status = { $ne: 'PENDING_CANVASS' };
+        } else if (typeof query.status === 'string') {
+          // Specific status selected
+          if (query.status === 'PENDING_CANVASS') {
+            // Trying to view PENDING_CANVASS explicitly - block it
+            query.status = 'NONEXISTENT_STATUS_BLOCK';
+          }
+          // Otherwise leave it as is (e.g., 'DRAFT', 'APPROVED', etc.)
+        }
+      }
+
       // Special cases: Operations, Finance, Purchasing, and President should see ALL Job Orders
       if (userDeptNorm !== 'operations' && userDeptNorm !== 'finance' && userDeptNorm !== 'purchasing' && userDeptNorm !== 'president') {
         // Show JOs where EITHER:
@@ -124,8 +154,32 @@ export async function GET(request: NextRequest) {
         }
       },
       {
+        $lookup: {
+          from: 'purchaseorders',
+          let: { joIdStr: { $toString: '$_id' } },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $eq: ['$joId', '$$joIdStr']
+                }
+              }
+            },
+            { $sort: { createdAt: -1 } },
+            { $limit: 1 }
+          ],
+          as: 'po_populated'
+        }
+      },
+      {
         $unwind: {
           path: '$srId_populated',
+          preserveNullAndEmptyArrays: true
+        }
+      },
+      {
+        $unwind: {
+          path: '$po_populated',
           preserveNullAndEmptyArrays: true
         }
       },
@@ -152,8 +206,11 @@ export async function GET(request: NextRequest) {
           acceptance: 1,
           approvals: 1,
           status: 1,
+          materialTransfer: 1,
           createdAt: 1,
           updatedAt: 1,
+          hasPurchaseOrder: { $gt: [{ $type: '$po_populated' }, 'missing'] },
+          poStatus: '$po_populated.status',
           srId: {
             $cond: {
               if: { $ne: ['$srId_populated', null] },
@@ -380,6 +437,15 @@ export async function POST(request: NextRequest) {
         authUser?.name || 'Unknown User',
         authUser?.department || 'Unknown Department'
       );
+      // Also notify requester for Material Requisition
+      await notifyJobOrderCreated(
+        jobOrder._id.toString(),
+        jobOrder.joNumber,
+        'MATERIAL_REQUISITION',
+        authUser?.name || 'Unknown User',
+        authUser?.department || 'Unknown Department',
+        sr.contactEmail
+      );
     } else {
       // Standard notification for SERVICE type
       await notifyJobOrderCreated(
@@ -387,7 +453,8 @@ export async function POST(request: NextRequest) {
         jobOrder.joNumber,
         jobOrderType as 'SERVICE' | 'MATERIAL_REQUISITION',
         authUser?.name || 'Unknown User',
-        authUser?.department || 'Unknown Department'
+        authUser?.department || 'Unknown Department',
+        sr.contactEmail
       );
     }
 

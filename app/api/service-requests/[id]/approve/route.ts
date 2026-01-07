@@ -90,6 +90,15 @@ export async function POST(
     }
     serviceRequest.approvals.push(approval);
 
+    // Update departmentHeadApproval field for frontend compatibility
+    serviceRequest.departmentHeadApproval = {
+      approved: body.action === 'APPROVED',
+      approverName: body.userName,
+      approverId: body.userId,
+      approvedAt: new Date().toISOString(),
+      comments: body.comments || '',
+    };
+
     // Update status based on approval action
     if (body.action === 'APPROVED') {
       serviceRequest.status = 'APPROVED';

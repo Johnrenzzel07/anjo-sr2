@@ -60,13 +60,13 @@ function canUserCreateJO(userDepartment: string | undefined, userRole: string, s
 function getAuthMessage(serviceCategory: string): string {
   const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[serviceCategory];
   if (!authorizedDepts) {
-    return 'Only Operations Department can create Job Orders for this category.';
+    return 'The requester or Operations Department can create Job Orders for this category.';
   }
   const deptNames = authorizedDepts.map(d => d.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
   if (deptNames.length === 1) {
-    return `Only ${deptNames[0]} Department can create Job Orders for "${serviceCategory}".`;
+    return `The requester or ${deptNames[0]} Department can create Job Orders for "${serviceCategory}".`;
   }
-  return `Only ${deptNames.join(' or ')} Department can create Job Orders for "${serviceCategory}".`;
+  return `The requester or ${deptNames.join(' or ')} Department can create Job Orders for "${serviceCategory}".`;
 }
 
 interface ServiceRequestCardProps {
@@ -76,6 +76,7 @@ interface ServiceRequestCardProps {
   currentUser?: { role: UserRole; id: string; name: string; department?: string };
   onApprovalUpdate?: () => void;
   hasJobOrder?: boolean;
+  hasUnreadNotification?: boolean;
 }
 
 export default function ServiceRequestCard({
@@ -84,6 +85,7 @@ export default function ServiceRequestCard({
   onCreateJO,
   currentUser,
   onApprovalUpdate,
+  hasUnreadNotification = false,
   hasJobOrder = false
 }: ServiceRequestCardProps) {
   const toast = useToast();
@@ -182,6 +184,9 @@ export default function ServiceRequestCard({
               relatedEntityId: srId,
             }),
           });
+          
+          // Trigger NotificationBell refresh
+          window.dispatchEvent(new Event('refreshNotifications'));
         } catch (notifError) {
           console.error('Error marking notifications as read:', notifError);
         }
@@ -220,7 +225,12 @@ export default function ServiceRequestCard({
         <Link href={`/service-requests/${serviceRequest.id || serviceRequest._id}`} className="block">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <h3 className="text-lg font-semibold text-gray-900">{serviceRequest.srNumber}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-semibold text-gray-900">{serviceRequest.srNumber}</h3>
+                {hasUnreadNotification && (
+                  <span className="h-2 w-2 bg-red-500 rounded-full flex-shrink-0"></span>
+                )}
+              </div>
               <p className="text-sm text-gray-500 mt-1">{serviceRequest.department}</p>
             </div>
             <StatusBadge status={serviceRequest.status} type="sr" />

@@ -68,6 +68,42 @@ export default function AdminDashboard() {
   const [completedJOCount, setCompletedJOCount] = useState(0);
   const [poCount, setPoCount] = useState(0);
 
+  // Unread notification counts by entity type
+  const [unreadNotifications, setUnreadNotifications] = useState({
+    SERVICE_REQUEST: 0,
+    JOB_ORDER: 0,
+    PURCHASE_ORDER: 0
+  });
+
+  // Track which specific entities have unread notifications
+  const [unreadEntityIds, setUnreadEntityIds] = useState<Set<string>>(new Set());
+
+  // Status counts for dropdown labels
+  const [srStatusCounts, setSrStatusCounts] = useState({
+    all: 0,
+    SUBMITTED: 0,
+    APPROVED: 0,
+    REJECTED: 0,
+    DRAFT: 0
+  });
+  const [joStatusCounts, setJoStatusCounts] = useState({
+    all: 0,
+    DRAFT: 0,
+    APPROVED: 0,
+    IN_PROGRESS: 0,
+    COMPLETED: 0,
+    REJECTED: 0,
+    CLOSED: 0
+  });
+  const [poStatusCounts, setPoStatusCounts] = useState({
+    all: 0,
+    APPROVED: 0,
+    REJECTED: 0,
+    PURCHASED: 0,
+    RECEIVED: 0,
+    CLOSED: 0
+  });
+
   useEffect(() => {
     fetchUser();
   }, []);
@@ -170,12 +206,144 @@ export default function AdminDashboard() {
     }
   }, [user]);
 
+  // Fetch unread notification counts by entity type
+  const fetchUnreadNotificationCounts = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const response = await fetch('/api/notifications?unreadOnly=true&limit=1000');
+      if (response.ok) {
+        const data = await response.json();
+        const notifications = data.notifications || [];
+
+        // Count unread notifications by entity type
+        const counts = {
+          SERVICE_REQUEST: 0,
+          JOB_ORDER: 0,
+          PURCHASE_ORDER: 0
+        };
+
+        // Track which specific entities have unread notifications
+        const entityIds = new Set<string>();
+
+        notifications.forEach((notif: any) => {
+          if (!notif.isRead && notif.relatedEntityType) {
+            counts[notif.relatedEntityType as keyof typeof counts]++;
+            if (notif.relatedEntityId) {
+              entityIds.add(notif.relatedEntityId);
+            }
+          }
+        });
+
+        setUnreadNotifications(counts);
+        setUnreadEntityIds(entityIds);
+      }
+    } catch (error) {
+      console.error('Error fetching unread notification counts:', error);
+    }
+  }, [user]);
+
+  // Fetch status counts for dropdowns
+  const fetchStatusCounts = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
+
+      // Fetch SR status counts
+      const [srAll, srSubmitted, srApproved, srRejected, srDraft] = await Promise.all([
+        fetch(`/api/service-requests?limit=1&skip=0&status=all${deptParam}`).then(r => r.json()),
+        fetch(`/api/service-requests?limit=1&skip=0&status=SUBMITTED${deptParam}`).then(r => r.json()),
+        fetch(`/api/service-requests?limit=1&skip=0&status=APPROVED${deptParam}`).then(r => r.json()),
+        fetch(`/api/service-requests?limit=1&skip=0&status=REJECTED${deptParam}`).then(r => r.json()),
+        fetch(`/api/service-requests?limit=1&skip=0&status=DRAFT${deptParam}`).then(r => r.json()),
+      ]);
+
+      setSrStatusCounts({
+        all: srAll.totalCount || 0,
+        SUBMITTED: srSubmitted.totalCount || 0,
+        APPROVED: srApproved.totalCount || 0,
+        REJECTED: srRejected.totalCount || 0,
+        DRAFT: srDraft.totalCount || 0
+      });
+
+      // Fetch JO status counts
+      const joDeptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
+      const [joAll, joDraft, joApproved, joInProgress, joCompleted, joRejected, joClosed] = await Promise.all([
+        fetch(`/api/job-orders?limit=1&skip=0&status=all&includeClosed=true${joDeptParam}`).then(r => r.json()),
+        fetch(`/api/job-orders?limit=1&skip=0&status=DRAFT${joDeptParam}`).then(r => r.json()),
+        fetch(`/api/job-orders?limit=1&skip=0&status=APPROVED${joDeptParam}`).then(r => r.json()),
+        fetch(`/api/job-orders?limit=1&skip=0&status=IN_PROGRESS${joDeptParam}`).then(r => r.json()),
+        fetch(`/api/job-orders?limit=1&skip=0&status=COMPLETED${joDeptParam}`).then(r => r.json()),
+        fetch(`/api/job-orders?limit=1&skip=0&status=REJECTED${joDeptParam}`).then(r => r.json()),
+        fetch(`/api/job-orders?limit=1&skip=0&status=CLOSED${joDeptParam}`).then(r => r.json()),
+      ]);
+
+      setJoStatusCounts({
+        all: joAll.totalCount || 0,
+        DRAFT: joDraft.totalCount || 0,
+        APPROVED: joApproved.totalCount || 0,
+        IN_PROGRESS: joInProgress.totalCount || 0,
+        COMPLETED: joCompleted.totalCount || 0,
+        REJECTED: joRejected.totalCount || 0,
+        CLOSED: joClosed.totalCount || 0
+      });
+
+      // Fetch PO status counts
+      if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
+        (user?.role === 'APPROVER' && (normalizeDept(user.department) === 'purchasing' || normalizeDept(user.department) === 'finance'))) {
+        const [poAll, poApproved, poRejected, poPurchased, poReceived, poClosed] = await Promise.all([
+          fetch(`/api/purchase-orders?limit=1&skip=0&status=all&includeClosed=true`).then(r => r.json()),
+          fetch(`/api/purchase-orders?limit=1&skip=0&status=APPROVED`).then(r => r.json()),
+          fetch(`/api/purchase-orders?limit=1&skip=0&status=REJECTED`).then(r => r.json()),
+          fetch(`/api/purchase-orders?limit=1&skip=0&status=PURCHASED`).then(r => r.json()),
+          fetch(`/api/purchase-orders?limit=1&skip=0&status=RECEIVED`).then(r => r.json()),
+          fetch(`/api/purchase-orders?limit=1&skip=0&status=CLOSED`).then(r => r.json()),
+        ]);
+
+        setPoStatusCounts({
+          all: poAll.totalCount || 0,
+          APPROVED: poApproved.totalCount || 0,
+          REJECTED: poRejected.totalCount || 0,
+          PURCHASED: poPurchased.totalCount || 0,
+          RECEIVED: poReceived.totalCount || 0,
+          CLOSED: poClosed.totalCount || 0
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching status counts:', error);
+    }
+  }, [user]);
+
   // Fetch stats counts on initial load (independent of filters)
   useEffect(() => {
     if (user) {
       fetchStatsCounts();
+      fetchStatusCounts();
+      fetchUnreadNotificationCounts();
     }
-  }, [user, fetchStatsCounts]);
+  }, [user, fetchStatsCounts, fetchStatusCounts, fetchUnreadNotificationCounts]);
+
+  // Poll for unread notifications every 30 seconds
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      fetchUnreadNotificationCounts();
+    }, 30000);
+
+    // Listen for manual refresh events from notification bell or cards
+    const handleRefreshNotifications = () => {
+      fetchUnreadNotificationCounts();
+    };
+
+    window.addEventListener('refreshNotifications', handleRefreshNotifications);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('refreshNotifications', handleRefreshNotifications);
+    };
+  }, [user, fetchUnreadNotificationCounts]);
 
   // Fetch absolute counts for all tabs on initial load
   useEffect(() => {
@@ -239,7 +407,7 @@ export default function AdminDashboard() {
     setSrLoadingMore(true);
     try {
       const currentSrSkip = srSkip;
-      const statusParam = filterStatus !== 'all' && filterStatus !== 'show_all' ? `&status=${filterStatus}` : (filterStatus === 'all' ? '&status=SUBMITTED' : '');
+      const statusParam = filterStatus === 'all' ? '&status=all' : `&status=${filterStatus}`;
       const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
 
       const srRes = await fetch(`/api/service-requests?limit=9&skip=${currentSrSkip}${statusParam}${deptParam}`);
@@ -335,11 +503,12 @@ export default function AdminDashboard() {
 
       const currentSrSkip = resetSR ? 0 : srSkip;
       // Include status and department filters in API call
-      const statusParam = filterStatus !== 'all' && filterStatus !== 'show_all' ? `&status=${filterStatus}` : (filterStatus === 'all' ? '&status=SUBMITTED' : '');
+      const statusParam = filterStatus === 'all' ? '&status=all' : `&status=${filterStatus}`;
       const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
       // Fetch Job Orders with closed included to properly check for existing JOs
       if (activeTab === 'sr') {
         await fetchJOData(false, true); // Refresh JOs with closed included to ensure we have latest data
+        await fetchAllCounts(); // Ensure srIdsWithJO is populated before rendering cards
       }
       const srRes = await fetch(`/api/service-requests?limit=9&skip=${currentSrSkip}${statusParam}${deptParam}`);
       const srData = await srRes.json();
@@ -383,10 +552,10 @@ export default function AdminDashboard() {
       }
 
       const currentJoSkip = resetJO ? 0 : joSkip;
-      const statusParam = filterJOStatus !== 'all' && filterJOStatus !== 'show_all' ? `&status=${filterJOStatus}` : '';
+      const statusParam = filterJOStatus === 'all' ? '&status=all' : `&status=${filterJOStatus}`;
       const deptParam = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
-      // Include closed Job Orders when checking for existing JOs (especially when on SR tab)
-      const includeClosedParam = (includeClosed || activeTab === 'sr') ? '&includeClosed=true' : '';
+      // Include closed Job Orders when checking for existing JOs (especially when on SR tab) OR when "All" is selected
+      const includeClosedParam = (includeClosed || activeTab === 'sr' || filterJOStatus === 'all') ? '&includeClosed=true' : '';
 
       const joRes = await fetch(`/api/job-orders?limit=9&skip=${currentJoSkip}${statusParam}${deptParam}${includeClosedParam}`);
       const joData = await joRes.json();
@@ -450,9 +619,11 @@ export default function AdminDashboard() {
       }
 
       const currentPoSkip = resetPO ? 0 : poSkip;
-      const statusParam = filterPOStatus !== 'all' && filterPOStatus !== 'show_all' ? `&status=${filterPOStatus}` : '';
+      const statusParam = filterPOStatus === 'all' ? '&status=all' : `&status=${filterPOStatus}`;
+      // Include closed Purchase Orders when "All" is selected
+      const includeClosedParam = filterPOStatus === 'all' ? '&includeClosed=true' : '';
 
-      const poRes = await fetch(`/api/purchase-orders?limit=9&skip=${currentPoSkip}${statusParam}`);
+      const poRes = await fetch(`/api/purchase-orders?limit=9&skip=${currentPoSkip}${statusParam}${includeClosedParam}`);
       const poData = await poRes.json();
 
       // Filter Purchase Orders - Purchasing, Finance, and President can see Purchase Orders
@@ -532,7 +703,7 @@ export default function AdminDashboard() {
 
       if (response.ok) {
         toast.showSuccess('Service request approved successfully!');
-        await Promise.all([fetchData(), fetchStatsCounts()]);
+        await Promise.all([fetchData(), fetchStatsCounts(), fetchStatusCounts()]);
       } else {
         toast.showError('Failed to approve service request');
       }
@@ -552,7 +723,7 @@ export default function AdminDashboard() {
 
       if (response.ok) {
         toast.showSuccess('Service request rejected successfully!');
-        await Promise.all([fetchData(), fetchStatsCounts()]);
+        await Promise.all([fetchData(), fetchStatsCounts(), fetchStatusCounts()]);
       } else {
         toast.showError('Failed to reject service request');
       }
@@ -615,7 +786,7 @@ export default function AdminDashboard() {
         setShowCreateForm(false);
         setSelectedSR(null);
         // Refresh both service requests and job orders to update the hasJO check
-        await Promise.all([fetchData(true), fetchJOData(true), fetchAllCounts(), fetchStatsCounts()]);
+        await Promise.all([fetchData(true), fetchJOData(true), fetchAllCounts(), fetchStatsCounts(), fetchStatusCounts()]);
         setActiveTab('jo');
 
         // Show success message
@@ -624,7 +795,7 @@ export default function AdminDashboard() {
         const error = await response.json();
         toast.showError(error.error || 'Failed to create Job Order');
         // Refresh data even on error to ensure UI is up to date
-        await Promise.all([fetchData(true), fetchJOData(true), fetchStatsCounts()]);
+        await Promise.all([fetchData(true), fetchJOData(true), fetchStatsCounts(), fetchStatusCounts()]);
         throw new Error(error.error || 'Failed to create Job Order');
       }
     } catch (error) {
@@ -751,33 +922,42 @@ export default function AdminDashboard() {
             <nav className="-mb-px flex space-x-4 sm:space-x-8 overflow-x-auto">
               <button
                 onClick={() => setActiveTab('sr')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'sr'
+                className={`py-4 px-1 border-b-2 font-medium text-sm relative inline-flex items-center gap-1 ${activeTab === 'sr'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
               >
-                Service Requests ({srTotalCount})
+                <span>Service Requests ({srTotalCount})</span>
+                {unreadNotifications.SERVICE_REQUEST > 0 && (
+                  <span className="h-2 w-2 bg-red-500 rounded-full flex-shrink-0"></span>
+                )}
               </button>
               <button
                 onClick={() => setActiveTab('jo')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'jo'
+                className={`py-4 px-1 border-b-2 font-medium text-sm relative inline-flex items-center gap-1 ${activeTab === 'jo'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
               >
-                Job Orders ({joTotalCount})
+                <span>Job Orders ({joTotalCount})</span>
+                {unreadNotifications.JOB_ORDER > 0 && (
+                  <span className="h-2 w-2 bg-red-500 rounded-full flex-shrink-0"></span>
+                )}
               </button>
               {/* Show Purchase Orders tab to Purchasing, Finance, President, ADMIN, and SUPER_ADMIN */}
               {(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
                 (user?.role === 'APPROVER' && (normalizeDept(user?.department) === 'purchasing' || normalizeDept(user?.department) === 'finance'))) && (
                   <button
                     onClick={() => setActiveTab('po')}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'po'
+                    className={`py-4 px-1 border-b-2 font-medium text-sm relative inline-flex items-center gap-1 ${activeTab === 'po'
                       ? 'border-blue-500 text-blue-600'
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                       }`}
                   >
-                    Purchase Orders ({poTotalCount})
+                    <span>Purchase Orders ({poTotalCount})</span>
+                    {unreadNotifications.PURCHASE_ORDER > 0 && (
+                      <span className="h-2 w-2 bg-red-500 rounded-full flex-shrink-0"></span>
+                    )}
                   </button>
                 )}
             </nav>
@@ -829,12 +1009,11 @@ export default function AdminDashboard() {
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               >
-                <option value="show_all">All</option>
-                <option value="all">Submitted</option>
-                {/* <option value="SUBMITTED">Submitted</option> */}
-                <option value="APPROVED">Approved</option>
-                <option value="REJECTED">Rejected</option>
-                <option value="DRAFT">Draft</option>
+                <option value="all">All ({srStatusCounts.all})</option>
+                <option value="SUBMITTED">Submitted ({srStatusCounts.SUBMITTED})</option>
+                <option value="APPROVED">Approved ({srStatusCounts.APPROVED})</option>
+                <option value="REJECTED">Rejected ({srStatusCounts.REJECTED})</option>
+                <option value="DRAFT">Draft ({srStatusCounts.DRAFT})</option>
               </select>
             </div>
           )}
@@ -845,16 +1024,14 @@ export default function AdminDashboard() {
                 onChange={(e) => setFilterJOStatus(e.target.value)}
                 className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
               >
-                <option value="show_all">All</option>
-                <option value="all">Needs Approval</option>
-                {/* <option value="needs_approval">Needs Approval</option> */}
-                <option value="DRAFT">Draft</option>
-                {/* <option value="BUDGET_CLEARED">Budget Cleared</option> */}
-                <option value="APPROVED">Approved</option>
-                <option value="IN_PROGRESS">In Progress</option>
-                <option value="COMPLETED">Completed</option>
-                <option value="REJECTED">Rejected</option>
-                <option value="CLOSED">Closed</option>
+                <option value="all">All ({joStatusCounts.all})</option>
+                <option value="needs_approval">Needs Approval</option>
+                <option value="DRAFT">Draft ({joStatusCounts.DRAFT})</option>
+                <option value="APPROVED">Approved ({joStatusCounts.APPROVED})</option>
+                <option value="IN_PROGRESS">In Progress ({joStatusCounts.IN_PROGRESS})</option>
+                <option value="COMPLETED">Completed ({joStatusCounts.COMPLETED})</option>
+                <option value="REJECTED">Rejected ({joStatusCounts.REJECTED})</option>
+                <option value="CLOSED">Closed ({joStatusCounts.CLOSED})</option>
               </select>
             </div>
           )}
@@ -867,16 +1044,9 @@ export default function AdminDashboard() {
                   onChange={(e) => setFilterPOStatus(e.target.value)}
                   className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
                 >
-                  <option value="show_all">All</option>
-                  <option value="all">Needs Approval</option>
-                  {/* <option value="needs_approval">Needs Approval</option> */}
-                  {/* <option value="DRAFT">Draft</option>
-                  <option value="SUBMITTED">Submitted</option> */}
-                  <option value="APPROVED">Approved</option>
-                  <option value="REJECTED">Rejected</option>
-                  <option value="PURCHASED">Purchased</option>
-                  <option value="RECEIVED">Received</option>
-                  <option value="CLOSED">Closed</option>
+                  <option value="all">All ({poStatusCounts.all})</option>
+                  <option value="PURCHASED">Pending ({poStatusCounts.PURCHASED})</option>
+                  <option value="RECEIVED">Received ({poStatusCounts.RECEIVED})</option>
                 </select>
               </div>
             )}
@@ -911,9 +1081,10 @@ export default function AdminDashboard() {
                             onCreateJO={handleCreateJO}
                             currentUser={user}
                             onApprovalUpdate={async () => {
-                              await Promise.all([fetchData(true), fetchStatsCounts(), fetchAllCounts()]);
+                              await Promise.all([fetchData(true), fetchStatsCounts(), fetchAllCounts(), fetchStatusCounts(), fetchUnreadNotificationCounts()]);
                             }}
                             hasJobOrder={hasJO}
+                            hasUnreadNotification={unreadEntityIds.has(srIdString) || unreadEntityIds.has(srIdMongo)}
                           />
                         </div>
                       );
@@ -950,7 +1121,7 @@ export default function AdminDashboard() {
                 <div className="bg-white rounded-lg shadow-md p-12 text-center">
                   <p className="text-gray-500">
                     {searchQuery || filterStatus !== 'all'
-                      ? 'No service requests match your search criteria.'
+                      ? 'No service requests match your criteria.'
                       : 'No service requests found.'}
                   </p>
                 </div>
@@ -984,24 +1155,32 @@ export default function AdminDashboard() {
                     return !financeApproved || !managementApproved;
                   }
                 });
-              } else if (filterJOStatus !== 'all' && filterJOStatus !== 'show_all') {
+              } else if (filterJOStatus !== 'all') {
                 filteredJOs = filteredJOs.filter((jo) => jo.status === filterJOStatus);
               }
-              // When filterJOStatus is 'show_all', no filter applied - show all items
+              // When filterJOStatus is 'all', no filter applied - show all items
 
               return filteredJOs.length > 0 ? (
                 <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
-                  {filteredJOs.map((jo) => (
-                    <div key={jo.id || jo._id} className="break-inside-avoid mb-4 sm:mb-6">
-                      <JobOrderCard jobOrder={jo} currentUser={user} />
-                    </div>
-                  ))}
+                  {filteredJOs.map((jo) => {
+                    const joId = jo.id || jo._id || '';
+                    const joIdString = joId.toString();
+                    return (
+                      <div key={joId} className="break-inside-avoid mb-4 sm:mb-6">
+                        <JobOrderCard
+                          jobOrder={jo}
+                          currentUser={user}
+                          hasUnreadNotification={unreadEntityIds.has(joIdString)}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="bg-white rounded-lg shadow-md p-12 text-center">
                   <p className="text-gray-500">
                     {searchQuery || filterJOStatus !== 'all'
-                      ? 'No job orders match your search criteria.'
+                      ? 'No job orders match your criteria.'
                       : 'No job orders found.'}
                   </p>
                 </div>
@@ -1029,24 +1208,32 @@ export default function AdminDashboard() {
                     );
                     return !financeApproved || !managementApproved;
                   });
-                } else if (filterPOStatus !== 'all' && filterPOStatus !== 'show_all') {
+                } else if (filterPOStatus !== 'all') {
                   filteredPOs = filteredPOs.filter((po) => po.status === filterPOStatus);
                 }
-                // When filterPOStatus is 'show_all', no filter applied - show all items
+                // When filterPOStatus is 'all', no filter applied - show all items
 
                 return filteredPOs.length > 0 ? (
                   <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
-                    {filteredPOs.map((po) => (
-                      <div key={po.id || po._id} className="break-inside-avoid mb-4 sm:mb-6">
-                        <PurchaseOrderCard purchaseOrder={po} currentUser={user} />
-                      </div>
-                    ))}
+                    {filteredPOs.map((po) => {
+                      const poId = po.id || po._id || '';
+                      const poIdString = poId.toString();
+                      return (
+                        <div key={poId} className="break-inside-avoid mb-4 sm:mb-6">
+                          <PurchaseOrderCard
+                            purchaseOrder={po}
+                            currentUser={user}
+                            hasUnreadNotification={unreadEntityIds.has(poIdString)}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="bg-white rounded-lg shadow-md p-12 text-center">
                     <p className="text-gray-500">
                       {searchQuery || filterPOStatus !== 'all'
-                        ? 'No purchase orders match your search criteria.'
+                        ? 'No purchase orders match your criteria.'
                         : 'No purchase orders found.'}
                     </p>
                   </div>

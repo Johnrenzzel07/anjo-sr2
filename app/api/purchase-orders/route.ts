@@ -30,7 +30,11 @@ export async function GET(request: Request) {
     const includeClosed = searchParams.get('includeClosed') === 'true';
     if (status === 'everything') {
       // Don't filter by status at all
-    } else if (status && status !== 'all') {
+    } else if (status === 'all') {
+      // When "All" is selected, show ALL statuses without any exclusions
+      // No status filter applied
+    } else if (status) {
+      // Specific status selected
       query.status = status;
     } else {
       // Exclude CLOSED and REJECTED status by default when no specific status is requested

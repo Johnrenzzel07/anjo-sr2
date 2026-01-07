@@ -30,7 +30,7 @@ export async function POST(
             );
         }
 
-        const jobOrder = await JobOrder.findById(id);
+        const jobOrder = await JobOrder.findById(id).populate('srId', 'contactEmail');
         if (!jobOrder) {
             return NextResponse.json({ error: 'Job Order not found' }, { status: 404 });
         }
@@ -94,13 +94,13 @@ export async function POST(
         await jobOrder.save();
 
         // Notify Finance that canvassing is complete and budget approval is needed
-        const { notifyJobOrderCreated } = await import('@/lib/utils/notifications');
-        await notifyJobOrderCreated(
+        const { notifyJobOrderNeedsApproval } = await import('@/lib/utils/notifications');
+        await notifyJobOrderNeedsApproval(
             jobOrder._id.toString(),
             jobOrder.joNumber,
+            'FINANCE',
             'MATERIAL_REQUISITION',
-            authUser.name,
-            authUser.department
+            authUser.name
         );
 
         return NextResponse.json({

@@ -86,10 +86,10 @@ export async function POST(
     const currentApprover = body.userName;
 
     if (isServiceType) {
-      // For Service type: When President approves, notify handling department that they can start execution
+      // For Service type: When President approves, notify handling department that they can start fulfillment
       if (presidentApproved) {
-        const { notifyHandlingDepartmentReadyForExecution } = await import('@/lib/utils/notifications');
-        await notifyHandlingDepartmentReadyForExecution(
+        const { notifyHandlingDepartmentReadyForFulfillment } = await import('@/lib/utils/notifications');
+        await notifyHandlingDepartmentReadyForFulfillment(
           jobOrder._id.toString(),
           jobOrder.joNumber,
           jobOrder.serviceCategory,

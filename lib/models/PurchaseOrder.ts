@@ -100,7 +100,7 @@ const PurchaseOrderSchema = new Schema<IPurchaseOrder>({
   },
   status: {
     type: String,
-    enum: ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'PURCHASED', 'RECEIVED', 'CLOSED'],
+    enum: ['DRAFT', 'SUBMITTED', 'APPROVED', 'REJECTED', 'PURCHASED', 'RECEIVED'],
     default: 'DRAFT',
   },
   approvals: {

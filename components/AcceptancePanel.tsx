@@ -11,6 +11,15 @@ interface AcceptancePanelProps {
   onAcceptanceUpdate?: () => void;
 }
 
+// Service Category to Department mapping for fulfillment management
+const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
+  'Technical Support': ['it'],
+  'Facility Maintenance': ['maintenance'],
+  'Account/Billing Inquiry': ['accounting'],
+  'General Inquiry': ['general services'],
+  'Other': ['operations'],
+};
+
 export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpdate }: AcceptancePanelProps) {
   const toast = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -36,21 +45,30 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
   // Admin and Super Admin can also edit
   const userRole = currentUser?.role as string;
   const isRequesterDeptHead = (userRole === 'APPROVER' || userRole === 'DEPARTMENT_HEAD') &&
-                              normalizedUserDept === normalizedRequesterDept;
+    normalizedUserDept === normalizedRequesterDept;
   const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
-  
-  // Can edit if user is requester's department head or admin
-  const canEditAcceptance = 
+
+  // Check if user is the handling department (department of the category request)
+  const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[jobOrder.serviceCategory] || ['operations'];
+  const isHandlingDept = authorizedDepts.includes(normalizedUserDept);
+
+  // Check if user is the individual requester
+  const isRequester = currentUser?.id === jobOrder.serviceRequest?.requestedBy ||
+    currentUser?.name === jobOrder.requestedBy ||
+    currentUser?.name === jobOrder.serviceRequest?.requestedBy;
+
+  // Can edit if user is requester's department head, individual requester, handling department, or admin
+  const canEditAcceptance =
     (jobOrder.status === 'COMPLETED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'CLOSED') &&
-    (isRequesterDeptHead || isAdmin);
-  
-  // Can accept service if user is requester's department head or admin
-  const canAcceptService = 
-    jobOrder.status === 'COMPLETED' && 
-    (isRequesterDeptHead || isAdmin);
-  
-  // Can view (read-only) if user is handling department, requester's department, or admin
-  const canViewAcceptance = canEditAcceptance || isAdmin || 
+    (isRequesterDeptHead || isRequester || isHandlingDept || isAdmin);
+
+  // Can accept service if user is requester's department head, individual requester, handling department, or admin
+  const canAcceptService =
+    jobOrder.status === 'COMPLETED' &&
+    (isRequesterDeptHead || isRequester || isHandlingDept || isAdmin);
+
+  // Can view (read-only)
+  const canViewAcceptance = canEditAcceptance || isAdmin ||
     (jobOrder.status === 'COMPLETED' || jobOrder.status === 'IN_PROGRESS' || jobOrder.status === 'CLOSED');
 
 
@@ -111,7 +129,7 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
     }
   };
 
-  const hasAcceptanceInfo = 
+  const hasAcceptanceInfo =
     jobOrder.acceptance?.actualStartDate ||
     jobOrder.acceptance?.actualCompletionDate ||
     jobOrder.acceptance?.workCompletionNotes ||
@@ -121,18 +139,18 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
   return (
     <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">Acceptance & Completion</h2>
-      
+
       {/* Explanation for Service type */}
       {jobOrder.type === 'SERVICE' && (
         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
           <p className="text-sm text-blue-800">
-            <strong>Purpose:</strong> This section is used to record the actual completion of the service work and formal acceptance by the requester. 
-            The handling department can update actual start/completion dates during execution. 
-            Once work is completed, only the <strong>{requesterDepartment} Department Head</strong> (the requester's department) can add completion notes and formally accept the service, which closes the Job Order.
+            <strong>Purpose:</strong> This section is used to record the actual completion of the service work and formal acceptance by the requester.
+            The handling department can update actual start/completion dates during fulfillment.
+            Fulfillment can be authorized (accepted) by the <strong>Requester</strong> or the <strong>Department of the Category Request</strong>.
           </p>
         </div>
       )}
-      
+
       {!hasAcceptanceInfo && jobOrder.status !== 'COMPLETED' && jobOrder.status !== 'IN_PROGRESS' && !canViewAcceptance && (
         <p className="text-sm text-gray-500">No completion information yet.</p>
       )}
@@ -149,7 +167,7 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
                 {new Date(jobOrder.acceptance.actualStartDate).toLocaleDateString()}
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Set automatically when execution started
+                Set automatically when fulfillment started
               </p>
             </div>
           )}
@@ -164,7 +182,7 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
                 {new Date(jobOrder.acceptance.actualCompletionDate).toLocaleDateString()}
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Set automatically when execution completed
+                Set automatically when fulfillment completed
               </p>
             </div>
           )}
@@ -188,9 +206,9 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
                 {jobOrder.acceptance?.workCompletionNotes || 'No completion notes provided.'}
               </div>
             )}
-            {!canEditAcceptance && normalizedUserDept !== normalizedRequesterDept && (
+            {!canEditAcceptance && (
               <p className="text-xs text-gray-500 mt-1">
-                Only {requesterDepartment} Department Head can edit completion notes.
+                Only the Requester or the department of the category request can edit completion notes.
               </p>
             )}
           </div>
@@ -199,7 +217,7 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
           {jobOrder.status === 'COMPLETED' && (
             <div className="pt-4 border-t">
               <h3 className="text-sm font-medium text-gray-700 mb-3">Service Acceptance</h3>
-              
+
               <div className="space-y-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -218,7 +236,7 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
                       {jobOrder.acceptance?.serviceAcceptedBy && (
                         <p className="text-xs text-gray-500 mt-1">
                           Accepted by: {jobOrder.acceptance.serviceAcceptedBy} on{' '}
-                          {jobOrder.acceptance.dateAccepted 
+                          {jobOrder.acceptance.dateAccepted
                             ? new Date(jobOrder.acceptance.dateAccepted).toLocaleDateString()
                             : 'N/A'}
                         </p>
@@ -229,15 +247,15 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
                       <div className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 text-gray-700">
                         {jobOrder.acceptance?.serviceAcceptedBy || 'Not accepted yet'}
                       </div>
-                      {!jobOrder.acceptance?.serviceAcceptedBy && normalizedUserDept !== normalizedRequesterDept && (
+                      {!jobOrder.acceptance?.serviceAcceptedBy && !canAcceptService && (
                         <p className="text-xs text-gray-500 mt-1">
-                          Only {requesterDepartment} Department Head can accept the service.
+                          Only the Requester or the department of the category request can accept the service.
                         </p>
                       )}
                       {jobOrder.acceptance?.serviceAcceptedBy && (
                         <p className="text-xs text-gray-500 mt-1">
                           Accepted by: {jobOrder.acceptance.serviceAcceptedBy} on{' '}
-                          {jobOrder.acceptance.dateAccepted 
+                          {jobOrder.acceptance.dateAccepted
                             ? new Date(jobOrder.acceptance.dateAccepted).toLocaleDateString()
                             : 'N/A'}
                         </p>
@@ -284,13 +302,13 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
 
             {canEditAcceptance && !canAcceptService && jobOrder.status !== 'CLOSED' && (
               <p className="text-sm text-gray-500">
-                Start and completion dates are set automatically during execution. You can add optional completion notes above.
+                Start and completion dates are set automatically during fulfillment. You can add optional completion notes above.
               </p>
             )}
-            
-            {!canEditAcceptance && !canAcceptService && jobOrder.status === 'COMPLETED' && normalizedUserDept !== normalizedRequesterDept && (
+
+            {!canEditAcceptance && !canAcceptService && jobOrder.status === 'COMPLETED' && (
               <p className="text-sm text-gray-500">
-                Only {requesterDepartment} Department Head can edit completion notes and accept the service.
+                Only the Requester or the department of the category request can edit completion notes and accept the service.
               </p>
             )}
           </div>

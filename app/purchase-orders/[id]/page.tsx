@@ -76,6 +76,9 @@ export default function PurchaseOrderDetailPage() {
               relatedEntityId: po.id || po._id?.toString(),
             }),
           });
+
+          // Trigger NotificationBell refresh
+          window.dispatchEvent(new Event('refreshNotifications'));
         } catch (notifError) {
           console.error('Error marking notifications as read:', notifError);
         }
@@ -436,6 +439,9 @@ export default function PurchaseOrderDetailPage() {
                                     relatedEntityId: purchaseOrder.id || purchaseOrder._id,
                                   }),
                                 });
+
+                                // Trigger NotificationBell refresh
+                                window.dispatchEvent(new Event('refreshNotifications'));
                               } catch (notifError) {
                                 console.error('Error marking notifications as read:', notifError);
                               }
@@ -502,9 +508,9 @@ export default function PurchaseOrderDetailPage() {
 
             {/* Post-Approval Actions: Mark as Purchased/Received */}
             {/* Show this block for DRAFT (budget already approved at JO level), APPROVED, PURCHASED, RECEIVED, or CLOSED */}
-            {(purchaseOrder.status === 'DRAFT' || purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED' || purchaseOrder.status === 'RECEIVED' || purchaseOrder.status === 'CLOSED') && (
+            {(purchaseOrder.status === 'DRAFT' || purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED' || purchaseOrder.status === 'RECEIVED') && (
               <div className="mt-6 pt-6 border-t border-gray-200">
-                <h3 className="text-md font-semibold text-gray-900 mb-3">Post-Approval Actions</h3>
+                {/* <h3 className="text-md font-semibold text-gray-900 mb-3">Post-Approval Actions</h3> */}
                 <div className="space-y-3">
                   {/* Mark as Received - show for DRAFT, APPROVED, or PURCHASED */}
                   {(purchaseOrder.status === 'DRAFT' || purchaseOrder.status === 'APPROVED' || purchaseOrder.status === 'PURCHASED') && (
@@ -573,7 +579,7 @@ export default function PurchaseOrderDetailPage() {
                   )}
 
                   {/* Status Display for Received/Closed */}
-                  {(purchaseOrder.status === 'RECEIVED' || purchaseOrder.status === 'CLOSED') && (
+                  {(purchaseOrder.status === 'RECEIVED') && (
                     <div className="p-3 bg-gray-50 rounded-md border border-gray-200">
                       <p className="text-sm text-gray-700">
                         <strong>Status:</strong> Purchase Order has been {purchaseOrder.status.toLowerCase()}.
@@ -609,4 +615,3 @@ export default function PurchaseOrderDetailPage() {
     </div>
   );
 }
-

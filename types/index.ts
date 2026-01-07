@@ -20,8 +20,7 @@ export type POStatus =
   | 'APPROVED'
   | 'REJECTED'
   | 'PURCHASED'
-  | 'RECEIVED'
-  | 'CLOSED';
+  | 'RECEIVED'; // RECEIVED is the final completed status for POs
 
 export interface ServiceRequest {
   id?: string;
@@ -169,6 +168,10 @@ export interface JobOrder {
 
   // Status
   status: JOStatus;
+
+  // Metadata for Dashboard indicators
+  hasPurchaseOrder?: boolean;
+  poStatus?: POStatus;
 
   // Metadata
   createdAt: string;

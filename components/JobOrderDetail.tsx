@@ -262,8 +262,9 @@ export default function JobOrderDetail({
       { status: 'CLOSED', label: 'Closed', condition: jobOrder.status === 'CLOSED' },
     ]
     : [
-      // Material Requisition type timeline
-      { status: 'DRAFT', label: 'Draft', condition: ['DRAFT', 'BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
+      // Material Requisition type timeline (starts at Pending Canvass, no Draft)
+      { status: 'PENDING_CANVASS', label: 'Pending Canvass', condition: true }, // Always shown
+      { status: 'BUDGET_APPROVAL', label: 'Budget Approval', condition: jobOrder.approvals?.some((a: any) => a.action === 'CANVASS_COMPLETED') || ['BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
       { status: 'APPROVED', label: 'Approved', condition: ['BUDGET_CLEARED', 'APPROVED', 'IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
       { status: 'IN_PROGRESS', label: 'In Progress', condition: ['IN_PROGRESS', 'COMPLETED', 'CLOSED'].includes(jobOrder.status) },
       { status: 'COMPLETED', label: 'Completed', condition: ['COMPLETED', 'CLOSED'].includes(jobOrder.status) },
@@ -372,6 +373,8 @@ export default function JobOrderDetail({
                         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Qty</th>
                         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Unit</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Size</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Color</th>
                         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Est. Cost</th>
                         <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Source</th>
                       </tr>
@@ -383,6 +386,8 @@ export default function JobOrderDetail({
                           <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-600">{material.description}</td>
                           <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-600">{material.quantity}</td>
                           <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-600">{material.unit}</td>
+                          <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-600">{material.size || '-'}</td>
+                          <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-600">{material.color || '-'}</td>
                           <td className="px-2 sm:px-4 py-3 text-xs sm:text-sm text-gray-600">
                             ₱{material.estimatedCost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
@@ -523,7 +528,7 @@ export default function JobOrderDetail({
               if (isRejected) {
                 return <p className="text-sm text-red-700 font-medium">✕ Rejected by President - This Job Order will not proceed</p>;
               } else if (presidentApproved) {
-                return <p className="text-sm text-green-700 font-medium">✓ Approved by {handlingDeptName} Department (via creation) and President - Ready for execution</p>;
+                return <p className="text-sm text-green-700 font-medium">✓ Approved by {handlingDeptName} Department (via creation) and President - Ready for fulfillment</p>;
               } else {
                 return <p className="text-sm text-blue-700">✓ Approved by {handlingDeptName} Department (via creation) - Waiting for President approval</p>;
               }
@@ -582,7 +587,7 @@ export default function JobOrderDetail({
 
               // For SERVICE type: Handling department created it, now waiting for President
               if (jobOrder.type === 'SERVICE' && isHandlingDept && !isPresident && (jobOrder.status as string) !== 'REJECTED') {
-                return 'This Job Order is waiting for President approval. Once approved, you can start execution.';
+                return 'This Job Order is waiting for President approval. Once approved, you can start fulfillment.';
               }
 
               return 'No approval actions available for your role.';

@@ -50,19 +50,46 @@ export async function PATCH(
 
     // Update job order
     jobOrder.materialTransfer = updatedTransfer;
-    
-    // If transfer is completed, ensure Job Order is IN_PROGRESS (if not already completed/closed)
+
+    // If transfer is completed, update Job Order status
     if (body.transferCompleted && jobOrder.status !== 'COMPLETED' && jobOrder.status !== 'CLOSED') {
-      if (jobOrder.status !== 'IN_PROGRESS') {
+      if (jobOrder.type === 'MATERIAL_REQUISITION') {
+        // For Material Requisition, transfer completion means the JO is COMPLETED
+        jobOrder.status = 'COMPLETED';
+        jobOrder.acceptance = {
+          ...(jobOrder.acceptance || {}),
+          actualCompletionDate: new Date().toISOString(),
+          workCompletionNotes: body.transferNotes || 'Materials transferred successfully.',
+        };
+      } else if (jobOrder.status !== 'IN_PROGRESS') {
+        // For Service Type, transfer completion moves it to IN_PROGRESS so work can begin
         jobOrder.status = 'IN_PROGRESS';
+        jobOrder.acceptance = {
+          ...(jobOrder.acceptance || {}),
+          actualStartDate: new Date().toISOString(),
+        };
       }
     }
 
     await jobOrder.save();
 
-    return NextResponse.json({ 
+    // If completed, send notifications
+    if (body.transferCompleted && jobOrder.type === 'MATERIAL_REQUISITION') {
+      try {
+        const { notifyJobOrderFulfillmentCompleted } = await import('@/lib/utils/notifications');
+        await notifyJobOrderFulfillmentCompleted(
+          jobOrder._id.toString(),
+          jobOrder.joNumber,
+          jobOrder.department
+        );
+      } catch (notifError) {
+        console.error('Error sending fulfillment notification:', notifError);
+      }
+    }
+
+    return NextResponse.json({
       jobOrder,
-      message: body.transferCompleted ? 'Material transfer completed successfully' : 'Material transfer updated successfully'
+      message: body.transferCompleted && jobOrder.type === 'MATERIAL_REQUISITION' ? 'Material transfer completed and Job Order fulfilled' : (body.transferCompleted ? 'Material transfer completed successfully' : 'Material transfer updated successfully')
     });
   } catch (error: any) {
     console.error('Error updating material transfer:', error);
@@ -80,7 +107,7 @@ export async function GET(
   try {
     await connectDB();
     const { id } = await params;
-    
+
     const jobOrder = await JobOrder.findById(id);
     if (!jobOrder) {
       return NextResponse.json(
@@ -89,7 +116,7 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       materialTransfer: jobOrder.materialTransfer || null
     });
   } catch (error: any) {

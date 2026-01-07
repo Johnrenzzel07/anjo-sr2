@@ -5,7 +5,7 @@ import { JobOrder, UserRole } from '@/types';
 import { useToast } from './ToastContainer';
 import { useConfirm } from './useConfirm';
 
-// Service Category to Department mapping for execution management
+// Service Category to Department mapping for fulfillment management
 const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
   'Technical Support': ['it'],
   'Facility Maintenance': ['maintenance'],
@@ -45,15 +45,15 @@ function getHandlingDepartmentName(serviceCategory: string): string {
   return depts[0].split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-interface ExecutionPanelProps {
+interface FulfillmentPanelProps {
   jobOrder: JobOrder;
   currentUser?: { role: UserRole; id: string; name: string; department?: string };
   hasPurchaseOrder?: boolean;
   hasCompletedTransfer?: boolean;
-  onExecutionUpdate?: () => void;
+  onFulfillmentUpdate?: () => void;
 }
 
-export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder, hasCompletedTransfer, onExecutionUpdate }: ExecutionPanelProps) {
+export default function FulfillmentPanel({ jobOrder, currentUser, hasPurchaseOrder, hasCompletedTransfer, onFulfillmentUpdate }: FulfillmentPanelProps) {
   const toast = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
   const [loading, setLoading] = useState(false);
@@ -65,8 +65,31 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
   const isHandlingDept = isHandlingDepartment(userDepartment, jobOrder.serviceCategory);
   const handlingDeptName = getHandlingDepartmentName(jobOrder.serviceCategory);
 
-  // Handling department, Operations, Admin, or Super Admin can manage execution
-  const canManageExecutionRole = isHandlingDept ||
+  // Check if user is the requester (more robust check)
+  const isRequester = (() => {
+    if (!currentUser) return false;
+
+    // Check against service request info (most accurate)
+    const srRequestedBy = jobOrder.serviceRequest?.requestedBy;
+    const joRequestedBy = jobOrder.requestedBy;
+
+    return (
+      (srRequestedBy && (currentUser.id === srRequestedBy || currentUser.name === srRequestedBy)) ||
+      (joRequestedBy && (currentUser.name === joRequestedBy || currentUser.id === joRequestedBy))
+    );
+  })();
+
+  console.log('Fulfillment Authorization Check:', {
+    userId: currentUser?.id,
+    userName: currentUser?.name,
+    joRequestedBy: jobOrder.requestedBy,
+    srRequestedBy: jobOrder.serviceRequest?.requestedBy,
+    isRequester
+  });
+
+  // Handling department, Requester, Operations, Admin, or Super Admin can manage fulfillment
+  const canManageFulfillmentRole = isHandlingDept ||
+    isRequester ||
     userRole === 'OPERATIONS' ||
     userRole === 'ADMIN' ||
     userRole === 'SUPER_ADMIN' ||
@@ -87,18 +110,19 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
   const serviceNeedsBudget = isServiceType && hasMaterials;
   const serviceBudgetReady = !serviceNeedsBudget || budgetCleared;
 
-  // For Service type without materials: execution can start once JO is APPROVED
-  // For Service type with materials: execution can start once JO is APPROVED AND budget is cleared
-  // For Material Requisition: JO must be APPROVED AND a Purchase Order must exist AND material transfer completed
-  const canStartExecution =
+  // For Service type without materials: fulfillment can start once JO is APPROVED
+  // For Service type with materials: fulfillment can start once JO is APPROVED AND budget is cleared
+  // For Material Requisition: Fulfillment is handled by the Transfer process, so we hide these actions.
+  const canStartFulfillment =
+    !isMaterialReq &&
     jobOrder.status === 'APPROVED' &&
-    canManageExecutionRole &&
-    serviceBudgetReady &&
-    (!isMaterialReq || (!!hasPurchaseOrder && !!hasCompletedTransfer));
+    canManageFulfillmentRole &&
+    serviceBudgetReady;
 
-  const canCompleteExecution =
+  const canCompleteFulfillment =
+    !isMaterialReq &&
     jobOrder.status === 'IN_PROGRESS' &&
-    canManageExecutionRole;
+    canManageFulfillmentRole;
 
   const handleStartExecution = async () => {
     const proceed = await confirm('Start fulfillment for this Job Order? This will set the status to IN_PROGRESS.', {
@@ -111,7 +135,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/job-orders/${jobOrder.id || jobOrder._id}/execution`, {
+      const response = await fetch(`/api/job-orders/${jobOrder.id || jobOrder._id}/fulfillment`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -121,14 +145,14 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
       if (response.ok) {
         toast.showSuccess('Fulfillment started successfully!');
-        onExecutionUpdate?.();
+        onFulfillmentUpdate?.();
       } else {
         const error = await response.json();
-        toast.showError(error.error || 'Failed to start execution');
+        toast.showError(error.error || 'Failed to start fulfillment');
       }
     } catch (error) {
-      console.error('Error starting execution:', error);
-      toast.showError('Failed to start execution');
+      console.error('Error starting fulfillment:', error);
+      toast.showError('Failed to start fulfillment');
     } finally {
       setLoading(false);
     }
@@ -145,7 +169,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
     setLoading(true);
     try {
-      const response = await fetch(`/api/job-orders/${jobOrder.id || jobOrder._id}/execution`, {
+      const response = await fetch(`/api/job-orders/${jobOrder.id || jobOrder._id}/fulfillment`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -155,14 +179,14 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
       if (response.ok) {
         toast.showSuccess('Job Order marked as fulfilled!');
-        onExecutionUpdate?.();
+        onFulfillmentUpdate?.();
       } else {
         const error = await response.json();
-        toast.showError(error.error || 'Failed to complete execution');
+        toast.showError(error.error || 'Failed to complete fulfillment');
       }
     } catch (error) {
-      console.error('Error completing execution:', error);
-      toast.showError('Failed to complete execution');
+      console.error('Error completing fulfillment:', error);
+      toast.showError('Failed to complete fulfillment');
     } finally {
       setLoading(false);
     }
@@ -171,7 +195,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
   if (jobOrder.status === 'CLOSED') {
     return (
       <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">Execution Status</h3>
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Fulfillment Status</h3>
         <p className="text-sm text-gray-600">This Job Order has been closed.</p>
       </div>
     );
@@ -181,7 +205,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
     <div className="bg-white rounded-lg shadow-md p-6 border border-gray-200">
       <h3 className="text-lg font-semibold text-gray-900 mb-4">Job Order Fulfillment</h3>
 
-      {/* Execution Status */}
+      {/* Fulfillment Status */}
       <div className="mb-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-gray-700">Current Status:</span>
@@ -214,12 +238,20 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
       {/* Info for Material Requisition about PO & transfer requirement */}
       {isMaterialReq && (
-        <div className="mb-4 text-xs text-gray-600">
-          {!hasPurchaseOrder
-            ? 'Create a Purchase Order for this Material Requisition Job Order before starting execution.'
-            : !hasCompletedTransfer
-              ? 'Materials have not yet been fully transferred. Complete the material transfer before starting execution.'
-              : 'A Purchase Order exists and materials are transferred.'}
+        <div className="mb-4 text-xs p-3 bg-blue-50 border border-blue-100 rounded-md text-blue-800">
+          <p className="flex items-center gap-2 font-medium">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Material Requisition Workflow
+          </p>
+          <p className="mt-1">
+            {!hasPurchaseOrder
+              ? 'Fulfillment will be automatically completed once a Purchase Order is created and materials are transferred.'
+              : !hasCompletedTransfer
+                ? 'Fulfillment will be automatically completed once you mark the material transfer as complete in the panel above.'
+                : 'Materials have been transferred and Job Order is fulfilled.'}
+          </p>
         </div>
       )}
 
@@ -227,7 +259,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
       {serviceNeedsBudget && !budgetCleared && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-md">
           <p className="text-sm text-yellow-800">
-            ⚠️ This Service type Job Order includes materials. Budget must be approved by Finance and President before execution can start.
+            ⚠️ This Service type Job Order includes materials. Budget must be approved by Finance and President before fulfillment can start.
           </p>
         </div>
       )}
@@ -237,7 +269,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
         <div className="mb-4">
           <h4 className="text-sm font-medium text-gray-700 mb-2">Schedule Milestones</h4>
           <div className="space-y-2">
-            {jobOrder.schedule.map((milestone, index) => {
+            {jobOrder.schedule.map((milestone: any, index: number) => {
               const startDate = new Date(milestone.startDate);
               const endDate = new Date(milestone.endDate);
               const now = new Date();
@@ -276,7 +308,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
-        {canStartExecution && (
+        {canStartFulfillment && (
           <button
             onClick={handleStartExecution}
             disabled={loading}
@@ -286,7 +318,7 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
           </button>
         )}
 
-        {canCompleteExecution && (
+        {canCompleteFulfillment && (
           <button
             onClick={handleCompleteExecution}
             disabled={loading}
@@ -296,19 +328,19 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
           </button>
         )}
 
-        {!canStartExecution && !canCompleteExecution && jobOrder.status !== 'COMPLETED' && (
+        {!canStartFulfillment && !canCompleteFulfillment && jobOrder.status !== 'COMPLETED' && (
           <p className="text-sm text-gray-500">
             {jobOrder.status === 'IN_PROGRESS'
               ? 'Fulfillment is in progress. Click the button above to mark as fulfilled.'
               : jobOrder.status === 'DRAFT'
-                ? `Job Order is currently ${jobOrder.status}. It must be approved by President first. Once approved, ${handlingDeptName} Department can start execution.`
+                ? `Job Order is currently ${jobOrder.status}. It must be approved by President first. Once approved, ${handlingDeptName} Department can start fulfillment.`
                 : serviceNeedsBudget && !budgetCleared
-                  ? 'Execution can only be started after budget is approved by Finance and President.'
+                  ? 'Fulfillment can only be started after budget is approved by Finance and President.'
                   : isMaterialReq && !hasPurchaseOrder
-                    ? 'Create a Purchase Order and complete material transfer before starting execution.'
+                    ? 'Create a Purchase Order and complete material transfer before starting fulfillment.'
                     : isMaterialReq && !hasCompletedTransfer
                       ? 'Complete the material transfer before starting fulfillment.'
-                      : `Fulfillment can only be started by ${handlingDeptName} Department or Admin when Job Order is APPROVED.`}
+                      : `Fulfillment can only be started by the Requester, ${handlingDeptName} Department, or Admin when Job Order is APPROVED.`}
           </p>
         )}
       </div>
@@ -316,4 +348,3 @@ export default function ExecutionPanel({ jobOrder, currentUser, hasPurchaseOrder
     </div>
   );
 }
-

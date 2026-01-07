@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import JobOrder from '@/lib/models/JobOrder';
-import { notifyJobOrderExecutionCompleted } from '@/lib/utils/notifications';
+import { notifyJobOrderFulfillmentCompleted } from '@/lib/utils/notifications';
+import { getAuthUser } from '@/lib/auth';
 
 export async function PATCH(
   request: NextRequest,
@@ -12,8 +13,13 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const { action, actualStartDate, actualCompletionDate, workCompletionNotes } = body;
+    const authUser = getAuthUser(request);
 
-    const jobOrder = await JobOrder.findById(id);
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const jobOrder = await JobOrder.findById(id).populate('srId');
     if (!jobOrder) {
       return NextResponse.json(
         { error: 'Job Order not found' },
@@ -21,17 +27,63 @@ export async function PATCH(
       );
     }
 
-    // Handle different execution actions
+    // Authorization check
+    const userDept = (authUser.department || '').toLowerCase().replace(/\s+department$/, '').trim();
+    const userRole = authUser.role;
+    const userId = authUser.id;
+    const userName = authUser.name;
+
+    // Mapping for handling departments
+    const SERVICE_CATEGORY_TO_DEPARTMENT: Record<string, string[]> = {
+      'Technical Support': ['it'],
+      'Facility Maintenance': ['maintenance'],
+      'Account/Billing Inquiry': ['accounting'],
+      'General Inquiry': ['general services'],
+      'Other': ['operations'],
+    };
+
+    const isHandlingDept = (() => {
+      if (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || userDept === 'president') return true;
+      const authorizedDepts = SERVICE_CATEGORY_TO_DEPARTMENT[jobOrder.serviceCategory] || ['operations'];
+      return authorizedDepts.includes(userDept);
+    })();
+
+    const isRequester = userId === jobOrder.serviceRequest?.requestedBy ||
+      userName === jobOrder.requestedBy ||
+      userName === (jobOrder.srId as any)?.requestedBy ||
+      userId === (jobOrder.srId as any)?.requestedBy;
+
+    console.log('Backend Fulfillment Auth Check:', {
+      action,
+      userId,
+      userName,
+      joRequestedBy: jobOrder.requestedBy,
+      srId_requestedBy: (jobOrder.srId as any)?.requestedBy,
+      isRequester,
+      isHandlingDept
+    });
+
+    const canManageFulfillment = isHandlingDept || isRequester || userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' ||
+      (userRole === 'APPROVER' && userDept === 'operations');
+
+    if (!canManageFulfillment) {
+      return NextResponse.json(
+        { error: 'You are not authorized to manage fulfillment for this Job Order' },
+        { status: 403 }
+      );
+    }
+
+    // Handle different fulfillment actions
     switch (action) {
       case 'START':
-        // Start execution - update status to IN_PROGRESS and set actual start date
+        // Start fulfillment - update status to IN_PROGRESS and set actual start date
         if (jobOrder.status !== 'APPROVED' && jobOrder.status !== 'BUDGET_CLEARED') {
           return NextResponse.json(
-            { error: 'Job Order must be APPROVED or BUDGET_CLEARED to start execution' },
+            { error: 'Job Order must be APPROVED or BUDGET_CLEARED to start fulfillment' },
             { status: 400 }
           );
         }
-        
+
         jobOrder.status = 'IN_PROGRESS';
         if (actualStartDate) {
           jobOrder.acceptance = {
@@ -58,14 +110,14 @@ export async function PATCH(
         break;
 
       case 'COMPLETE':
-        // Complete execution - update status to COMPLETED and set completion date
+        // Complete fulfillment - update status to COMPLETED and set completion date
         if (jobOrder.status !== 'IN_PROGRESS') {
           return NextResponse.json(
-            { error: 'Job Order must be IN_PROGRESS to complete execution' },
+            { error: 'Job Order must be IN_PROGRESS to complete fulfillment' },
             { status: 400 }
           );
         }
-        
+
         jobOrder.status = 'COMPLETED';
         if (actualCompletionDate) {
           jobOrder.acceptance = {
@@ -78,7 +130,7 @@ export async function PATCH(
             actualCompletionDate: new Date().toISOString(),
           };
         }
-        
+
         if (workCompletionNotes) {
           jobOrder.acceptance = {
             ...(jobOrder.acceptance || {}),
@@ -95,24 +147,24 @@ export async function PATCH(
     }
 
     await jobOrder.save();
-    
-    // Notify requester's department head when execution is completed
+
+    // Notify requester's department head when fulfillment is completed
     if (action === 'COMPLETE' && jobOrder.department) {
-      await notifyJobOrderExecutionCompleted(
+      await notifyJobOrderFulfillmentCompleted(
         jobOrder._id.toString(),
         jobOrder.joNumber,
         jobOrder.department
       );
     }
-    
+
     // Populate service request for response
     await jobOrder.populate('srId', 'srNumber requestedBy department');
 
     return NextResponse.json({ jobOrder });
   } catch (error: any) {
-    console.error('Error updating execution:', error);
+    console.error('Error updating fulfillment:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to update execution' },
+      { error: error.message || 'Failed to update fulfillment' },
       { status: 500 }
     );
   }
