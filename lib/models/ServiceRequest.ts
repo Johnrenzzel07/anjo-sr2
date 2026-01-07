@@ -88,6 +88,13 @@ const ServiceRequestSchema = new Schema<IServiceRequest>({
     }],
     default: [],
   },
+  departmentHeadApproval: {
+    approved: Boolean,
+    approverName: String,
+    approverId: String,
+    approvedAt: String,
+    comments: String,
+  },
   createdAt: {
     type: String,
     default: () => new Date().toISOString(),

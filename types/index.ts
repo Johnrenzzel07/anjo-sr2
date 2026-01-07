@@ -45,6 +45,13 @@ export interface ServiceRequest {
   budgetSource?: string;
   status: SRStatus;
   approvals?: Approval[];
+  departmentHeadApproval?: {
+    approved: boolean;
+    approverName: string;
+    approverId: string;
+    approvedAt: string;
+    comments?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
