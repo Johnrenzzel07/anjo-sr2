@@ -20,7 +20,8 @@ export type POStatus =
   | 'APPROVED'
   | 'REJECTED'
   | 'PURCHASED'
-  | 'RECEIVED'; // RECEIVED is the final completed status for POs
+  | 'RECEIVED'
+  | 'CLOSED';
 
 export interface ServiceRequest {
   id?: string;
@@ -279,5 +280,3 @@ export interface CreatePurchaseOrderInput {
   tax?: number;
   expectedDeliveryDate?: string;
 }
-
-
