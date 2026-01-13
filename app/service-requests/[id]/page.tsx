@@ -8,6 +8,30 @@ import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 import ImageModal from '@/components/ImageModal';
 
+interface CurrentUser {
+  id: string;
+  email: string;
+  name: string;
+  role: string;
+  department?: string;
+}
+
+// Helper function to get priority badge styling
+const getPriorityBadgeStyle = (priority: string) => {
+  switch (priority.toUpperCase()) {
+    case 'URGENT':
+      return 'bg-red-100 text-red-800 border-red-300';
+    case 'HIGH':
+      return 'bg-orange-100 text-orange-800 border-orange-300';
+    case 'MEDIUM':
+      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    case 'LOW':
+      return 'bg-green-100 text-green-800 border-green-300';
+    default:
+      return 'bg-gray-100 text-gray-800 border-gray-300';
+  }
+};
+
 export default function ServiceRequestDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -18,11 +42,30 @@ export default function ServiceRequestDetailPage() {
   const [selectedImageUrl, setSelectedImageUrl] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
+  // New state for approval/rejection
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectComments, setRejectComments] = useState('');
+
   useEffect(() => {
     if (params.id) {
       fetchServiceRequest(params.id as string);
     }
+    fetchCurrentUser();
   }, [params.id]);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const response = await fetch('/api/auth/me');
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentUser(data.user);
+      }
+    } catch (error) {
+      console.error('Error fetching current user:', error);
+    }
+  };
 
   const fetchServiceRequest = async (id: string) => {
     try {
@@ -85,6 +128,96 @@ export default function ServiceRequestDetailPage() {
     }
   };
 
+  const handleApprove = async () => {
+    if (!currentUser || !serviceRequest) return;
+
+    const confirmed = confirm('Are you sure you want to approve this Service Request?');
+    if (!confirmed) return;
+
+    setIsProcessing(true);
+    try {
+      const response = await fetch(`/api/service-requests/${serviceRequest.id || serviceRequest._id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: currentUser.role,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'APPROVED',
+          comments: '',
+        }),
+      });
+
+      if (response.ok) {
+        alert('Service Request approved successfully!');
+        // Refresh the service request data
+        await fetchServiceRequest(serviceRequest.id || serviceRequest._id || '');
+      } else {
+        const errorData = await response.json();
+        alert(`Error: ${errorData.error || 'Failed to approve service request'}`);
+      }
+    } catch (error) {
+      console.error('Error approving service request:', error);
+      alert('An error occurred while approving the service request');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!currentUser || !serviceRequest || !rejectComments.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const response = await fetch(`/api/service-requests/${serviceRequest.id || serviceRequest._id}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: currentUser.role,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          action: 'REJECTED',
+          comments: rejectComments,
+        }),
+      });
+
+      if (response.ok) {
+        alert('Service Request rejected successfully!');
+        setShowRejectModal(false);
+        setRejectComments('');
+        // Refresh the service request data
+        await fetchServiceRequest(serviceRequest.id || serviceRequest._id || '');
+      } else {
+        const errorData = await response.json();
+        alert(`Error: ${errorData.error || 'Failed to reject service request'}`);
+      }
+    } catch (error) {
+      console.error('Error rejecting service request:', error);
+      alert('An error occurred while rejecting the service request');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const canApprove = () => {
+    if (!currentUser || !serviceRequest) return false;
+    if (serviceRequest.status !== 'SUBMITTED') return false;
+
+    const userRole = currentUser.role;
+    const userDept = (currentUser.department || '').toLowerCase().replace(/\s+department$/, '').trim();
+    const srDept = (serviceRequest.department || '').toLowerCase().replace(/\s+department$/, '').trim();
+
+    // Allow SUPER_ADMIN, ADMIN, or APPROVER from the same department
+    return (
+      userRole === 'SUPER_ADMIN' ||
+      userRole === 'ADMIN' ||
+      (userRole === 'APPROVER' && userDept === srDept)
+    );
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -138,6 +271,61 @@ export default function ServiceRequestDetailPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Approve/Reject Section - Show when user can approve */}
+        {canApprove() && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow-md border-2 border-blue-200 p-6 mb-6">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start gap-3">
+                <div className="bg-blue-100 rounded-full p-2 mt-1">
+                  <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-blue-900 mb-1">Approval Required</h3>
+                  <p className="text-sm text-blue-700">
+                    This Service Request is awaiting your approval. Please review the details below and take action.
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={handleApprove}
+                  disabled={isProcessing}
+                  className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-all font-semibold shadow-md text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isProcessing ? (
+                    <>
+                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Approve Request
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setShowRejectModal(true)}
+                  disabled={isProcessing}
+                  className="flex-1 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-semibold shadow-md text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Reject Request
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Create Job Order Section - Show when SR is approved and check is complete */}
         {serviceRequest.status === 'APPROVED' && !checkingJobOrder && (
           existingJobOrder ? (
@@ -223,13 +411,21 @@ export default function ServiceRequestDetailPage() {
                 <p className="text-gray-900">{serviceRequest.timeOfRequest}</p>
               </div>
             )}
+            {serviceRequest.dateNeeded && (
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-1">Date Needed</h3>
+                <p className="text-gray-900">{new Date(serviceRequest.dateNeeded).toLocaleDateString()}</p>
+              </div>
+            )}
             <div>
               <h3 className="text-sm font-medium text-gray-700 mb-1">Service Category</h3>
               <p className="text-gray-900">{serviceRequest.serviceCategory}</p>
             </div>
             <div>
               <h3 className="text-sm font-medium text-gray-700 mb-1">Priority</h3>
-              <p className="text-gray-900">{serviceRequest.priority}</p>
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border ${getPriorityBadgeStyle(serviceRequest.priority)}`}>
+                {serviceRequest.priority}
+              </span>
             </div>
             <div className="col-span-2">
               <h3 className="text-sm font-medium text-gray-700 mb-1">Brief Subject / Summary</h3>
@@ -300,6 +496,93 @@ export default function ServiceRequestDetailPage() {
         onClose={() => setIsModalOpen(false)}
         imageUrl={selectedImageUrl || ''}
       />
+
+      {/* Rejection Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl max-w-md w-full overflow-hidden">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Reject Service Request
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowRejectModal(false);
+                    setRejectComments('');
+                  }}
+                  className="text-white hover:text-red-100 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                Please provide a reason for rejecting this Service Request. This will be sent to the requester.
+              </p>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                Rejection Reason <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={rejectComments}
+                onChange={(e) => setRejectComments(e.target.value)}
+                placeholder="Enter the reason for rejection..."
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 transition-all resize-none"
+                rows={5}
+                disabled={isProcessing}
+              />
+              {rejectComments.trim() === '' && (
+                <p className="text-sm text-red-600 mt-2">* Rejection reason is required</p>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-gray-50 px-6 py-4 flex flex-col sm:flex-row gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setRejectComments('');
+                }}
+                disabled={isProcessing}
+                className="px-6 py-2.5 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-all font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleReject}
+                disabled={isProcessing || !rejectComments.trim()}
+                className="px-6 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all font-semibold shadow-md disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isProcessing ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    Confirm Rejection
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

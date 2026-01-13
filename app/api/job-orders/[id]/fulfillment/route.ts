@@ -148,12 +148,16 @@ export async function PATCH(
 
     await jobOrder.save();
 
-    // Notify requester's department head when fulfillment is completed
+    // Notify requester's department head and requester when fulfillment is completed
     if (action === 'COMPLETE' && jobOrder.department) {
+      // Get requester email from service request
+      const requesterEmail = (jobOrder.srId as any)?.contactEmail;
+
       await notifyJobOrderFulfillmentCompleted(
         jobOrder._id.toString(),
         jobOrder.joNumber,
-        jobOrder.department
+        jobOrder.department,
+        requesterEmail
       );
     }
 

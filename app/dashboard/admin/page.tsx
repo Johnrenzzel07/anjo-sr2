@@ -58,6 +58,8 @@ export default function AdminDashboard() {
   const [joTotalCount, setJoTotalCount] = useState(0);
   const [poTotalCount, setPoTotalCount] = useState(0);
   const [joLoading, setJoLoading] = useState(true); // Track if job orders are still loading
+  const [srLoading, setSrLoading] = useState(true); // Track if service requests are still loading
+  const [poLoading, setPoLoading] = useState(true); // Track if purchase orders are still loading
   const [srIdsWithJO, setSrIdsWithJO] = useState<Set<string>>(new Set()); // Track SR IDs that have JOs
 
   // Stats counts (independent of filters)
@@ -499,6 +501,7 @@ export default function AdminDashboard() {
         setSrSkip(0);
         setServiceRequests([]);
         setSrHasMore(true);
+        setSrLoading(true); // Set loading when resetting
       }
 
       const currentSrSkip = resetSR ? 0 : srSkip;
@@ -539,6 +542,7 @@ export default function AdminDashboard() {
       console.error('Error fetching data:', error);
     } finally {
       setLoading(false);
+      setSrLoading(false); // Mark as loaded
     }
   };
 
@@ -616,6 +620,7 @@ export default function AdminDashboard() {
         setPoSkip(0);
         setPurchaseOrders([]);
         setPoHasMore(true);
+        setPoLoading(true); // Set loading when resetting
       }
 
       const currentPoSkip = resetPO ? 0 : poSkip;
@@ -657,6 +662,8 @@ export default function AdminDashboard() {
       setPoSkip(currentPoSkip + fetchedCount);
     } catch (error) {
       console.error('Error fetching purchase orders:', error);
+    } finally {
+      setPoLoading(false); // Mark as loaded
     }
   };
 
@@ -1117,6 +1124,11 @@ export default function AdminDashboard() {
                     </div>
                   )}
                 </>
+              ) : srLoading ? (
+                <div className="bg-white rounded-lg shadow-md p-12 text-center">
+                  <LoadingSpinner size="48" speed="1.4" color="#3b82f6" />
+                  <p className="text-gray-500 mt-4">Loading service requests...</p>
+                </div>
               ) : (
                 <div className="bg-white rounded-lg shadow-md p-12 text-center">
                   <p className="text-gray-500">
@@ -1176,6 +1188,11 @@ export default function AdminDashboard() {
                     );
                   })}
                 </div>
+              ) : joLoading ? (
+                <div className="bg-white rounded-lg shadow-md p-12 text-center">
+                  <LoadingSpinner size="48" speed="1.4" color="#3b82f6" />
+                  <p className="text-gray-500 mt-4">Loading job orders...</p>
+                </div>
               ) : (
                 <div className="bg-white rounded-lg shadow-md p-12 text-center">
                   <p className="text-gray-500">
@@ -1228,6 +1245,11 @@ export default function AdminDashboard() {
                         </div>
                       );
                     })}
+                  </div>
+                ) : poLoading ? (
+                  <div className="bg-white rounded-lg shadow-md p-12 text-center">
+                    <LoadingSpinner size="48" speed="1.4" color="#3b82f6" />
+                    <p className="text-gray-500 mt-4">Loading purchase orders...</p>
                   </div>
                 ) : (
                   <div className="bg-white rounded-lg shadow-md p-12 text-center">

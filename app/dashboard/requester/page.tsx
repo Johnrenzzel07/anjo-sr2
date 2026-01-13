@@ -11,6 +11,22 @@ import { useToast } from '@/components/ToastContainer';
 import Link from 'next/link';
 import LoadingSpinner from '@/components/LoadingSpinner';
 
+// Helper function to get priority badge styling
+const getPriorityBadgeStyle = (priority: string) => {
+  switch (priority.toUpperCase()) {
+    case 'URGENT':
+      return 'bg-red-100 text-red-800 border-red-300';
+    case 'HIGH':
+      return 'bg-orange-100 text-orange-800 border-orange-300';
+    case 'MEDIUM':
+      return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+    case 'LOW':
+      return 'bg-green-100 text-green-800 border-green-300';
+    default:
+      return 'bg-gray-100 text-gray-800 border-gray-300';
+  }
+};
+
 export default function RequesterDashboard() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -48,7 +64,7 @@ export default function RequesterDashboard() {
       if (response.ok) {
         const data = await response.json();
         const notifications = data.notifications || [];
-        
+
         // Track which specific entities have unread notifications
         const entityIds = new Set<string>();
 
@@ -550,7 +566,9 @@ export default function RequesterDashboard() {
                             </p>
                             <p className="text-sm">
                               <span className="font-medium text-gray-700">Priority:</span>{' '}
-                              <span className="text-gray-600">{sr.priority}</span>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${getPriorityBadgeStyle(sr.priority)}`}>
+                                {sr.priority}
+                              </span>
                             </p>
                             <p className="text-sm text-gray-600 line-clamp-2">{sr.briefSubject || sr.workDescription}</p>
                           </div>

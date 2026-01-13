@@ -22,6 +22,9 @@ export async function POST(request: NextRequest) {
         const fileName = `attachments/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExtension}`;
 
         const bucketName = process.env.DO_SPACES_BUCKET || "anjo-sr";
+        const endpoint = process.env.DO_SPACES_ENDPOINT || "https://sgp1.digitaloceanspaces.com";
+
+        console.log(`Uploading ${fileName} to bucket ${bucketName} at endpoint ${endpoint}`);
 
         const command = new PutObjectCommand({
             Bucket: bucketName,
@@ -33,13 +36,16 @@ export async function POST(request: NextRequest) {
 
         await s3Client.send(command);
 
-        const fileUrl = `${process.env.DO_SPACES_URL}/${fileName}`;
+        const baseUrl = process.env.DO_SPACES_URL || `https://${bucketName}.${endpoint.replace('https://', '')}`;
+        const fileUrl = `${baseUrl}/${fileName}`;
+
+        console.log(`Upload successful. File URL: ${fileUrl}`);
 
         return NextResponse.json({ url: fileUrl });
     } catch (error: any) {
         console.error("Error uploading to Spaces:", error);
         return NextResponse.json(
-            { error: error.message || "Failed to upload file" },
+            { error: `Upload failed: ${error.message}` },
             { status: 500 }
         );
     }

@@ -10,6 +10,7 @@ interface ServiceRequestFormData {
   contactPhone: string;
   dateOfRequest: string;
   timeOfRequest: string;
+  dateNeeded: string;
   serviceCategory: string;
   requestUrgency: string;
   briefSubject: string;
@@ -67,6 +68,7 @@ export default function ServiceRequestForm() {
     contactPhone: '',
     dateOfRequest: today,
     timeOfRequest: currentTime,
+    dateNeeded: '',
     serviceCategory: '',
     requestUrgency: '',
     briefSubject: '',
@@ -138,6 +140,9 @@ export default function ServiceRequestForm() {
           if (uploadRes.ok) {
             const { url } = await uploadRes.json();
             attachmentUrls.push(url);
+          } else {
+            const errorMsg = await uploadRes.json();
+            throw new Error(errorMsg.error || `Failed to upload ${file.name}`);
           }
         }
         setUploadingFiles(false);
@@ -192,6 +197,7 @@ export default function ServiceRequestForm() {
       contactPhone: '',
       dateOfRequest: today,
       timeOfRequest: currentTime,
+      dateNeeded: '',
       serviceCategory: '',
       requestUrgency: '',
       briefSubject: '',
@@ -330,6 +336,26 @@ export default function ServiceRequestForm() {
             </div>
           </div>
 
+          {/* Date Needed */}
+          <div>
+            <label htmlFor="dateNeeded" className="block text-sm font-medium text-gray-700 mb-1">
+              Date Needed <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="date"
+              id="dateNeeded"
+              name="dateNeeded"
+              value={formData.dateNeeded}
+              onChange={handleChange}
+              required
+              min={today}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              When do you need this service completed?
+            </p>
+          </div>
+
           {/* Service Category */}
           <div>
             <label htmlFor="serviceCategory" className="block text-sm font-medium text-gray-700 mb-1">
@@ -409,7 +435,24 @@ export default function ServiceRequestForm() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Photo Attachments (Optional)
             </label>
-            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-blue-400 transition-colors">
+            <input
+              id="file-upload"
+              name="file-upload"
+              type="file"
+              className="sr-only"
+              accept="image/*"
+              multiple
+              onChange={(e) => {
+                if (e.target.files) {
+                  // Append new files to existing attachments
+                  setAttachments(prev => [...prev, ...Array.from(e.target.files!)]);
+                }
+              }}
+            />
+            <label
+              htmlFor="file-upload"
+              className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-blue-400 transition-colors cursor-pointer"
+            >
               <div className="space-y-1 text-center">
                 <svg
                   className="mx-auto h-12 w-12 text-gray-400"
@@ -426,46 +469,42 @@ export default function ServiceRequestForm() {
                   />
                 </svg>
                 <div className="flex text-sm text-gray-600">
-                  <label
-                    htmlFor="file-upload"
-                    className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none"
-                  >
-                    <span>Upload photos</span>
-                    <input
-                      id="file-upload"
-                      name="file-upload"
-                      type="file"
-                      className="sr-only"
-                      accept="image/*"
-                      multiple
-                      onChange={(e) => {
-                        if (e.target.files) {
-                          setAttachments(Array.from(e.target.files));
-                        }
-                      }}
-                    />
-                  </label>
+                  <span className="relative font-medium text-blue-600 hover:text-blue-500">
+                    Upload photos
+                  </span>
                   <p className="pl-1 text-gray-500">or drag and drop</p>
                 </div>
                 <p className="text-xs text-gray-500">PNG, JPG, GIF up to 10MB</p>
               </div>
-            </div>
+            </label>
             {attachments.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {attachments.map((file, idx) => (
-                  <div key={idx} className="relative group">
-                    <div className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 flex items-center gap-1">
-                      <span className="max-w-[150px] truncate">{file.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                        className="text-blue-500 hover:text-red-500 font-bold"
-                      >
-                        ×
-                      </button>
+              <div className="mt-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map((file, idx) => (
+                    <div key={idx} className="relative group">
+                      <div className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded border border-blue-200 flex items-center gap-1">
+                        <span className="max-w-[150px] truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                          className="text-blue-500 hover:text-red-500 font-bold"
+                        >
+                          ×
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                {/* Upload More Button */}
+                <label
+                  htmlFor="file-upload"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-md hover:bg-blue-100 transition-colors cursor-pointer border border-blue-200 text-sm font-medium"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Upload More Photos
+                </label>
               </div>
             )}
           </div>

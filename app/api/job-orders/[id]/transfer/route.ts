@@ -76,11 +76,16 @@ export async function PATCH(
     // If completed, send notifications
     if (body.transferCompleted && jobOrder.type === 'MATERIAL_REQUISITION') {
       try {
+        // Populate service request to get requester email
+        await jobOrder.populate('srId', 'contactEmail requestedBy');
+        const requesterEmail = (jobOrder.srId as any)?.contactEmail;
+
         const { notifyJobOrderFulfillmentCompleted } = await import('@/lib/utils/notifications');
         await notifyJobOrderFulfillmentCompleted(
           jobOrder._id.toString(),
           jobOrder.joNumber,
-          jobOrder.department
+          jobOrder.department,
+          requesterEmail
         );
       } catch (notifError) {
         console.error('Error sending fulfillment notification:', notifError);

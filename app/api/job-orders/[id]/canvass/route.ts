@@ -46,6 +46,24 @@ export async function POST(
         const body = await request.json();
         const { materials, comments } = body;
 
+        // Validate that all materials have prices
+        if (materials && Array.isArray(materials)) {
+            const missingPrices = materials.filter((mat: any) =>
+                !mat.unitPrice || mat.unitPrice === 0 || !mat.estimatedCost || mat.estimatedCost === 0
+            );
+
+            if (missingPrices.length > 0) {
+                const missingItems = missingPrices.map((mat: any) => mat.item).join(', ');
+                return NextResponse.json(
+                    {
+                        error: 'Cannot submit canvass with missing prices',
+                        details: `The following materials are missing prices: ${missingItems}. Please enter unit prices for all materials before submitting.`
+                    },
+                    { status: 400 }
+                );
+            }
+        }
+
         // Update materials with pricing
         if (materials && Array.isArray(materials)) {
             jobOrder.materials = materials.map((mat: any) => ({

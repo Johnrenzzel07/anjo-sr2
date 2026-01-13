@@ -1,6 +1,6 @@
 import mongoose, { Schema, models, model } from 'mongoose';
 
-export type NotificationType = 
+export type NotificationType =
   | 'SERVICE_REQUEST_SUBMITTED'
   | 'SERVICE_REQUEST_APPROVED'
   | 'SERVICE_REQUEST_REJECTED'
@@ -9,7 +9,8 @@ export type NotificationType =
   | 'JOB_ORDER_APPROVED'
   | 'JOB_ORDER_STATUS_CHANGED'
   | 'PURCHASE_ORDER_CREATED'
-  | 'PURCHASE_ORDER_NEEDS_APPROVAL';
+  | 'PURCHASE_ORDER_NEEDS_APPROVAL'
+  | 'PURCHASE_ORDER_APPROVED';
 
 export interface INotification {
   _id?: string;
@@ -44,6 +45,7 @@ const NotificationSchema = new Schema<INotification>({
       'JOB_ORDER_STATUS_CHANGED',
       'PURCHASE_ORDER_CREATED',
       'PURCHASE_ORDER_NEEDS_APPROVAL',
+      'PURCHASE_ORDER_APPROVED',
     ],
     required: true,
   },
@@ -85,8 +87,8 @@ const NotificationSchema = new Schema<INotification>({
 NotificationSchema.index({ userId: 1, isRead: 1 });
 NotificationSchema.index({ userId: 1, createdAt: -1 });
 
-const Notification = (models.Notification as mongoose.Model<INotification>) || 
-                     model<INotification>('Notification', NotificationSchema);
+const Notification = (models.Notification as mongoose.Model<INotification>) ||
+  model<INotification>('Notification', NotificationSchema);
 
 export default Notification;
 

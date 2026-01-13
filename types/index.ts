@@ -34,6 +34,7 @@ export interface ServiceRequest {
   contactPhone?: string;
   dateOfRequest: string;
   timeOfRequest?: string;
+  dateNeeded?: string;
   priority: PriorityLevel;
   targetStartDate?: string;
   targetCompletionDate?: string;

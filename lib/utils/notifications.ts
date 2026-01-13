@@ -593,12 +593,13 @@ export async function notifyPurchaseOrderNeedsApproval(
 }
 
 /**
- * Notify requester's department head when Job Order fulfillment is completed
+ * Notify requester's department head and the requester when Job Order fulfillment is completed
  */
 export async function notifyJobOrderFulfillmentCompleted(
   jobOrderId: string,
   joNumber: string,
-  requesterDepartment: string
+  requesterDepartment: string,
+  requesterEmail?: string
 ) {
   try {
     // Notify the REQUESTER'S department head (the department that originally requested the SR)
@@ -614,17 +615,32 @@ export async function notifyJobOrderFulfillmentCompleted(
 
     if (allUserIds.length === 0) {
       console.warn(`No department head found for department: ${requesterDepartment}`);
-      return;
+    } else {
+      await createNotificationsForUsers(allUserIds, {
+        type: 'JOB_ORDER_STATUS_CHANGED',
+        title: `Job Order Completed: ${joNumber}`,
+        message: `Job Order ${joNumber} has been fulfilled and completed. Please review and accept the service.`,
+        link: `/job-orders/${jobOrderId}`,
+        relatedEntityType: 'JOB_ORDER',
+        relatedEntityId: jobOrderId,
+      });
     }
 
-    await createNotificationsForUsers(allUserIds, {
-      type: 'JOB_ORDER_STATUS_CHANGED',
-      title: `Job Order Completed: ${joNumber}`,
-      message: `Job Order ${joNumber} has been fulfilled and completed. Please review and accept the service.`,
-      link: `/job-orders/${jobOrderId}`,
-      relatedEntityType: 'JOB_ORDER',
-      relatedEntityId: jobOrderId,
-    });
+    // Also notify the actual requester directly
+    if (requesterEmail) {
+      const requesterId = await findUserByEmail(requesterEmail);
+      if (requesterId) {
+        await createNotification({
+          userId: requesterId,
+          type: 'JOB_ORDER_STATUS_CHANGED',
+          title: `Your Job Order is Complete: ${joNumber}`,
+          message: `Job Order ${joNumber} has been fulfilled and completed. Please review the work and proceed with acceptance.`,
+          link: `/job-orders/${jobOrderId}`,
+          relatedEntityType: 'JOB_ORDER',
+          relatedEntityId: jobOrderId,
+        });
+      }
+    }
   } catch (error) {
     console.error('Error notifying job order fulfillment completed:', error);
   }
@@ -680,3 +696,37 @@ export async function notifyJobOrderServiceAccepted(
   }
 }
 
+/**
+ * Notify Purchasing Department when President approves Purchase Order
+ * This lets Purchasing know they can proceed with purchasing the items
+ */
+export async function notifyPurchaseOrderApproved(
+  purchaseOrderId: string,
+  poNumber: string,
+  requestedBy: string,
+  department: string
+) {
+  try {
+    // Find Purchasing users
+    const purchasingIds = await findUsersByRole('APPROVER', 'Purchasing');
+    const purchasingDeptIds = await findUsersByRole('APPROVER', 'Purchasing Department');
+    const superAdminIds = await findUsersByRole('SUPER_ADMIN');
+    const userIds = [...new Set([...purchasingIds, ...purchasingDeptIds, ...superAdminIds])];
+
+    if (userIds.length === 0) {
+      console.warn('No Purchasing Department users found');
+      return;
+    }
+
+    await createNotificationsForUsers(userIds, {
+      type: 'PURCHASE_ORDER_APPROVED',
+      title: `Purchase Order Approved: ${poNumber}`,
+      message: `Purchase Order ${poNumber} from ${department} has been approved by the President. You can now proceed with purchasing.`,
+      link: `/purchase-orders/${purchaseOrderId}`,
+      relatedEntityType: 'PURCHASE_ORDER',
+      relatedEntityId: purchaseOrderId,
+    });
+  } catch (error) {
+    console.error('Error notifying purchase order approved:', error);
+  }
+}

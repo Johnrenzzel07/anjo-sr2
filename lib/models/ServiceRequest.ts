@@ -34,6 +34,9 @@ const ServiceRequestSchema = new Schema<IServiceRequest>({
   timeOfRequest: {
     type: String,
   },
+  dateNeeded: {
+    type: String,
+  },
   priority: {
     type: String,
     enum: ['LOW', 'MEDIUM', 'HIGH', 'URGENT'],

@@ -28,7 +28,7 @@ export default function AcceptancePanel({ jobOrder, currentUser, onAcceptanceUpd
     jobOrder.acceptance?.workCompletionNotes || ''
   );
   const [serviceAcceptedBy, setServiceAcceptedBy] = useState(
-    jobOrder.acceptance?.serviceAcceptedBy || ''
+    jobOrder.acceptance?.serviceAcceptedBy || currentUser?.name || ''
   );
 
   // Normalize department names for comparison

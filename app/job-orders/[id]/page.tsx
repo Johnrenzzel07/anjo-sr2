@@ -438,42 +438,71 @@ export default function JobOrderPage() {
                 </div>
               </div>
 
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={async () => {
-                    const confirmed = await confirm(
-                      'Are you ready to submit this for budget approval? The current material prices will be used for the budget calculation.',
-                      { title: 'Submit Canvass', confirmText: 'Submit', confirmButtonColor: 'green' }
-                    );
-                    if (!confirmed) return;
+              <div className="mt-4">
+                {(() => {
+                  const hasMissingPrices = canvassMaterials.some(m => !m.unitPrice || m.unitPrice === 0 || !m.estimatedCost || m.estimatedCost === 0);
 
-                    try {
-                      const joId = jobOrder.id || (jobOrder as any)._id;
-                      const response = await fetch(`/api/job-orders/${joId}/canvass`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                          materials: canvassMaterials,
-                          comments: 'Canvassing completed by Purchasing Department',
-                        }),
-                      });
+                  return (
+                    <>
+                      {hasMissingPrices && (
+                        <div className="mb-3 bg-red-50 border border-red-200 rounded-md p-3">
+                          <div className="flex items-start gap-2">
+                            <svg className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <div>
+                              <p className="text-sm font-medium text-red-900">Missing Prices</p>
+                              <p className="text-xs text-red-700 mt-1">
+                                Please enter unit prices for all materials before submitting for approval.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex justify-end">
+                        <button
+                          onClick={async () => {
+                            const confirmed = await confirm(
+                              'Are you ready to submit this for budget approval? The current material prices will be used for the budget calculation.',
+                              { title: 'Submit Canvass', confirmText: 'Submit', confirmButtonColor: 'green' }
+                            );
+                            if (!confirmed) return;
 
-                      if (response.ok) {
-                        toast.showSuccess('Canvass submitted successfully! Job Order forwarded for budget approval.');
-                        fetchJobOrder(joId);
-                      } else {
-                        const error = await response.json();
-                        toast.showError(error.error || 'Failed to submit canvass');
-                      }
-                    } catch (error) {
-                      console.error('Error submitting canvass:', error);
-                      toast.showError('Failed to submit canvass');
-                    }
-                  }}
-                  className="bg-orange-600 text-white px-6 py-2 rounded-md font-medium hover:bg-orange-700 shadow-sm"
-                >
-                  Submit for Budget Approval
-                </button>
+                            try {
+                              const joId = jobOrder.id || (jobOrder as any)._id;
+                              const response = await fetch(`/api/job-orders/${joId}/canvass`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  materials: canvassMaterials,
+                                  comments: 'Canvassing completed by Purchasing Department',
+                                }),
+                              });
+
+                              if (response.ok) {
+                                toast.showSuccess('Canvass submitted successfully! Job Order forwarded for budget approval.');
+                                fetchJobOrder(joId);
+                              } else {
+                                const error = await response.json();
+                                toast.showError(error.error || 'Failed to submit canvass');
+                              }
+                            } catch (error) {
+                              console.error('Error submitting canvass:', error);
+                              toast.showError('Failed to submit canvass');
+                            }
+                          }}
+                          disabled={hasMissingPrices}
+                          className={`px-6 py-2 rounded-md font-medium shadow-sm transition-colors ${hasMissingPrices
+                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              : 'bg-orange-600 text-white hover:bg-orange-700'
+                            }`}
+                        >
+                          Submit for Budget Approval
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           );

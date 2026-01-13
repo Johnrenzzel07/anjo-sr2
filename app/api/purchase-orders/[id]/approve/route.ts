@@ -34,7 +34,7 @@ export async function POST(
 
     // Only President (MANAGEMENT, SUPER_ADMIN, ADMIN) can approve Purchase Orders
     const isPresident = body.role === 'SUPER_ADMIN' || body.role === 'MANAGEMENT' || body.role === 'ADMIN';
-    
+
     // Check if President has already approved
     const presidentApproved = purchaseOrder.approvals.some(
       (a: any) => a.role === 'MANAGEMENT' && a.action === 'APPROVED'
@@ -84,6 +84,17 @@ export async function POST(
     await purchaseOrder.save();
     await purchaseOrder.populate('joId', 'joNumber type');
     await purchaseOrder.populate('srId', 'srNumber');
+
+    // Notify Purchasing department when President approves the PO
+    if (body.action === 'APPROVED') {
+      const { notifyPurchaseOrderApproved } = await import('@/lib/utils/notifications');
+      await notifyPurchaseOrderApproved(
+        purchaseOrder._id.toString(),
+        purchaseOrder.poNumber,
+        purchaseOrder.requestedBy,
+        purchaseOrder.department
+      );
+    }
 
     return NextResponse.json({ purchaseOrder });
   } catch (error: any) {

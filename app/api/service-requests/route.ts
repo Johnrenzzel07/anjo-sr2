@@ -195,6 +195,7 @@ export async function POST(request: Request) {
       contactPhone: body.contactPhone,
       dateOfRequest,
       timeOfRequest,
+      dateNeeded: body.dateNeeded,
       priority: body.priority || body.requestUrgency || 'MEDIUM',
       serviceCategory: body.serviceCategory,
       workDescription: body.workDescription || body.detailedDescription,
