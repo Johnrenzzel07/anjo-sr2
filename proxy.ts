@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 // Whitelist of allowed IP addresses
-// Can be overridden by ALLOWED_IPS environment variable (comma-separated)
-const DEFAULT_ALLOWED_IPS = [
+const ALLOWED_IPS = [
   '143.44.162.23',
   '122.53.24.194',
   '180.190.243.109',
@@ -13,37 +12,16 @@ const DEFAULT_ALLOWED_IPS = [
   '27.49.70.2',
   '222.127.50.75',
   '27.49.69.5',
-  '127.0.0.1',      // Localhost IPv4
-  '::1',            // Localhost IPv6
-  'localhost',      // Localhost hostname
+  '192.168.0.179',  // Local network IP
+  '::1',            // IPv6 localhost
+  '127.0.0.1',      // IPv4 localhost
 ];
 
-// Get allowed IPs from environment variable or use default
-const getWhitelistedIPs = (): string[] => {
-  const envIPs = process.env.ALLOWED_IPS;
-  if (envIPs) {
-    const ips = envIPs.split(',').map(ip => ip.trim()).filter(Boolean);
-    return [...ips, '127.0.0.1', '::1', 'localhost']; // Always include localhost
-  }
-  return DEFAULT_ALLOWED_IPS;
-};
-
-const ALLOWED_IPS = getWhitelistedIPs();
-
-export function middleware(request: NextRequest) {
+export default function proxy(request: NextRequest) {
   // Get client IP address
   const forwarded = request.headers.get('x-forwarded-for');
   const realIp = request.headers.get('x-real-ip');
   const ip = forwarded ? forwarded.split(',')[0].trim() : realIp || 'unknown';
-
-  // Allow localhost during development
-  const isDevelopment = process.env.NODE_ENV === 'development';
-  const isLocalhost = request.headers.get('host')?.includes('localhost') || 
-                      request.headers.get('host')?.includes('127.0.0.1');
-
-  if (isDevelopment && isLocalhost) {
-    return NextResponse.next();
-  }
 
   // Check if IP is in whitelist
   if (!ALLOWED_IPS.includes(ip)) {
@@ -121,7 +99,7 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Configure which routes the middleware should run on
+// Configure which routes the proxy should run on
 export const config = {
   matcher: [
     /*

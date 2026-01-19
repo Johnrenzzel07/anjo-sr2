@@ -8,7 +8,7 @@ import ServiceRequest from '@/lib/models/ServiceRequest';
 import { getAuthUser } from '@/lib/auth';
 import { CreateReceivingReportInput } from '@/types';
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const authUser = getAuthUser(request);
     if (!authUser) {

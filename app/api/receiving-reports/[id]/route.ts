@@ -8,7 +8,7 @@ import ServiceRequest from '@/lib/models/ServiceRequest';
 import { getAuthUser } from '@/lib/auth';
 
 export async function GET(
-  request: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
