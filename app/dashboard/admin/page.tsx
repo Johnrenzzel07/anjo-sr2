@@ -258,7 +258,8 @@ export default function AdminDashboard() {
         const counts = {
           SERVICE_REQUEST: 0,
           JOB_ORDER: 0,
-          PURCHASE_ORDER: 0
+          PURCHASE_ORDER: 0,
+          RECEIVING_REPORT: 0
         };
 
         // Track which specific entities have unread notifications

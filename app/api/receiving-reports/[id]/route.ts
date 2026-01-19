@@ -36,7 +36,7 @@ export async function GET(
           { path: 'srId', select: 'srNumber' }
         ]
       })
-      .lean();
+      .lean() as any;
 
     if (!receivingReport) {
       return NextResponse.json(
@@ -48,13 +48,13 @@ export async function GET(
     // Format the response
     const formattedReport = {
       ...receivingReport,
-      id: receivingReport._id.toString(),
-      _id: receivingReport._id.toString(),
-      poId: typeof receivingReport.poId === 'object' && (receivingReport.poId as any)?._id
+      id: receivingReport._id?.toString() || receivingReport.id,
+      _id: receivingReport._id?.toString() || receivingReport.id,
+      poId: typeof receivingReport.poId === 'object' && receivingReport.poId?._id
         ? {
-            ...(receivingReport.poId as any),
-            id: (receivingReport.poId as any)._id.toString(),
-            _id: (receivingReport.poId as any)._id.toString(),
+            ...receivingReport.poId,
+            id: receivingReport.poId._id.toString(),
+            _id: receivingReport.poId._id.toString(),
           }
         : receivingReport.poId,
     };

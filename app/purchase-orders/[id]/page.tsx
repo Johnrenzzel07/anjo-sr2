@@ -252,7 +252,7 @@ export default function PurchaseOrderDetailPage() {
            currentUser && 
            (currentUser.role === 'ADMIN' || 
             currentUser.role === 'SUPER_ADMIN' || 
-            (currentUser.role === 'APPROVER' && currentUser.department === 'Purchasing')) && (
+            ((currentUser.role as string) === 'APPROVER' && currentUser.department === 'Purchasing')) && (
             <div className="mt-6 pt-6 border-t border-gray-200 no-print">
               <button
                 onClick={() => setShowCreateRR(true)}
