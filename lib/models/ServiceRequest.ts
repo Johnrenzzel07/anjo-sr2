@@ -131,11 +131,6 @@ ServiceRequestSchema.pre('save', function () {
   this.updatedAt = new Date().toISOString();
 });
 
-// Forcefully clear the model cache in development to ensure enum updates are picked up
-if (process.env.NODE_ENV === 'development' && models.ServiceRequest) {
-  delete (models as any).ServiceRequest;
-}
-
 const ServiceRequest = (models.ServiceRequest as mongoose.Model<IServiceRequest>) || model<IServiceRequest>('ServiceRequest', ServiceRequestSchema);
 
 export default ServiceRequest;

@@ -209,11 +209,6 @@ JobOrderSchema.pre('save', async function () {
   this.updatedAt = new Date().toISOString();
 });
 
-// Forcefully clear the model cache in development to ensure enum updates like 'REJECTED' are picked up
-if (process.env.NODE_ENV === 'development' && models.JobOrder) {
-  delete (models as any).JobOrder;
-}
-
 const JobOrder = models.JobOrder || model<IJobOrder>('JobOrder', JobOrderSchema);
 export default JobOrder;
 

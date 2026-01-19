@@ -53,13 +53,44 @@ export default function LoginPage() {
   const [showInstallBtn, setShowInstallBtn] = useState(false);
 
   useEffect(() => {
+    // Check if already installed
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                        (window.navigator as any).standalone || 
+                        document.referrer.includes('android-app://');
+    
+    if (isStandalone) {
+      setShowInstallBtn(false);
+      return;
+    }
+
     const handler = (e: any) => {
       e.preventDefault();
       setDeferredPrompt(e);
       setShowInstallBtn(true);
     };
+    
+    // Add event listener
     window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    
+    // Check if the event was already fired before we set up the listener
+    // Some browsers store this on the window object
+    const checkForExistingPrompt = () => {
+      if ((window as any).deferredPrompt) {
+        setDeferredPrompt((window as any).deferredPrompt);
+        setShowInstallBtn(true);
+      }
+    };
+    
+    // Check immediately
+    checkForExistingPrompt();
+    
+    // Also check after a short delay to catch race conditions
+    const timeoutId = setTimeout(checkForExistingPrompt, 100);
+    
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      clearTimeout(timeoutId);
+    };
   }, []);
 
   const handleInstallClick = async () => {

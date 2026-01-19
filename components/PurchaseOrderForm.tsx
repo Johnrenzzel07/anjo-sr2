@@ -86,11 +86,27 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
 
 
   const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
+    // Prevent removing the last item
+    if (items.length <= 1) {
+      toast.showWarning('Cannot remove the last item. A Purchase Order must have at least one item.');
+      return;
+    }
+    
+    const itemName = items[index].item;
+    if (window.confirm(`Are you sure you want to remove "${itemName}" from this Purchase Order? This item will not be purchased.`)) {
+      setItems(items.filter((_, i) => i !== index));
+      toast.showSuccess(`Item "${itemName}" removed from Purchase Order.`);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validate that there is at least one item
+    if (items.length === 0) {
+      toast.showWarning('Cannot create Purchase Order without items. Please add at least one item.');
+      return;
+    }
 
     // Validate that all items have supplier info
     const itemsWithoutSupplier = items.filter(item => !item.supplierInfo?.name && !item.supplier);
@@ -111,11 +127,22 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Items */}
       <div>
-        <div className="mb-3">
+        <div className="mb-3 flex items-center justify-between">
           <label className="block text-sm font-medium text-gray-700">
             Purchase Order Items
           </label>
+          <span className="text-sm text-gray-500">
+            {items.length} item{items.length !== 1 ? 's' : ''} • 
+            <span className="text-blue-600 font-medium"> Click trash icon to remove unwanted items</span>
+          </span>
         </div>
+        {items.length === 1 && (
+          <div className="mb-3 px-3 py-2 bg-yellow-50 border border-yellow-200 rounded-md">
+            <p className="text-xs text-yellow-800">
+              ⚠️ This is the last item. At least one item is required to create a Purchase Order.
+            </p>
+          </div>
+        )}
 
         {/* Header Labels */}
         <div className="hidden md:grid grid-cols-12 gap-2 px-4 mb-2">
@@ -196,22 +223,41 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
                   className={`col-span-2 px-2 py-1 border border-gray-300 rounded text-sm ${item.materialItemId ? 'bg-gray-100 cursor-not-allowed' : ''}`}
                   required
                 />
-                <input
-                  type="text"
-                  placeholder="Total Price"
-                  value={formatCurrency(item.totalPrice)}
-                  readOnly
-                  className="col-span-2 px-2 py-1 border border-gray-300 rounded text-sm bg-gray-100"
-                />
-                {!item.materialItemId && (
+                <div className="col-span-2 flex items-center gap-1">
+                  <input
+                    type="text"
+                    placeholder="Total Price"
+                    value={formatCurrency(item.totalPrice)}
+                    readOnly
+                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm bg-gray-100"
+                  />
                   <button
                     type="button"
                     onClick={() => removeItem(index)}
-                    className="col-span-1 text-red-600 hover:text-red-800 text-sm"
+                    className={`px-2 py-1 rounded transition-colors ${
+                      items.length <= 1
+                        ? 'text-gray-300 cursor-not-allowed'
+                        : 'text-red-600 hover:text-red-800 hover:bg-red-50'
+                    }`}
+                    title={items.length <= 1 ? 'Cannot remove the last item' : 'Remove this item from Purchase Order'}
+                    disabled={items.length <= 1}
                   >
-                    Remove
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                      />
+                    </svg>
                   </button>
-                )}
+                </div>
               </div>
 
               {/* Supplier Information and Delivery Date for this Item */}
@@ -255,6 +301,14 @@ export default function PurchaseOrderForm({ jobOrder, onSubmit, onCancel }: Purc
               </div>
             </div>
           ))}
+        </div>
+        
+        {/* Help Text */}
+        <div className="mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-md">
+          <p className="text-xs text-blue-800">
+            <strong>💡 Tip:</strong> You can remove items that are not needed right now or if you've found a better alternative. 
+            Items removed here will not be included in this Purchase Order, but remain in the original Job Order.
+          </p>
         </div>
       </div>
 

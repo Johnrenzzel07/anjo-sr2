@@ -2,11 +2,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ServiceRequest, JobOrder, PurchaseOrder, JobOrderType } from '@/types';
+import { ServiceRequest, JobOrder, PurchaseOrder, ReceivingReport, JobOrderType } from '@/types';
 import ServiceRequestCard from '@/components/ServiceRequestCard';
 import JobOrderCard from '@/components/JobOrderCard';
 import JobOrderForm from '@/components/JobOrderForm';
 import PurchaseOrderCard from '@/components/PurchaseOrderCard';
+import ReceivingReportCard from '@/components/ReceivingReportCard';
+import ReceivingReportForm from '@/components/ReceivingReportForm';
 import StatusBadge from '@/components/StatusBadge';
 import NotificationBell from '@/components/NotificationBell';
 import SettingsMenu from '@/components/SettingsMenu';
@@ -26,14 +28,15 @@ export default function AdminDashboard() {
   const [serviceRequests, setServiceRequests] = useState<ServiceRequest[]>([]);
   const [jobOrders, setJobOrders] = useState<JobOrder[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [receivingReports, setReceivingReports] = useState<ReceivingReport[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Get initial tab from URL query parameter, default to 'sr'
-  const [activeTab, setActiveTab] = useState<'sr' | 'jo' | 'po' | 'approvals'>(() => {
+  const [activeTab, setActiveTab] = useState<'sr' | 'jo' | 'po' | 'rr' | 'approvals'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get('tab');
-      if (tab === 'sr' || tab === 'jo' || tab === 'po' || tab === 'approvals') {
+      if (tab === 'sr' || tab === 'jo' || tab === 'po' || tab === 'rr' || tab === 'approvals') {
         return tab;
       }
     }
@@ -42,8 +45,11 @@ export default function AdminDashboard() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterJOStatus, setFilterJOStatus] = useState<string>('all');
   const [filterPOStatus, setFilterPOStatus] = useState<string>('all');
+  const [filterRRStatus, setFilterRRStatus] = useState<string>('all');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedSR, setSelectedSR] = useState<ServiceRequest | null>(null);
+  const [showCreateRR, setShowCreateRR] = useState(false);
+  const [selectedPO, setSelectedPO] = useState<PurchaseOrder | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [srSkip, setSrSkip] = useState(0);
   const [srLoadingMore, setSrLoadingMore] = useState(false);
@@ -54,12 +60,17 @@ export default function AdminDashboard() {
   const [poSkip, setPoSkip] = useState(0);
   const [poLoadingMore, setPoLoadingMore] = useState(false);
   const [poHasMore, setPoHasMore] = useState(true);
+  const [rrSkip, setRrSkip] = useState(0);
+  const [rrLoadingMore, setRrLoadingMore] = useState(false);
+  const [rrHasMore, setRrHasMore] = useState(true);
   const [srTotalCount, setSrTotalCount] = useState(0);
   const [joTotalCount, setJoTotalCount] = useState(0);
   const [poTotalCount, setPoTotalCount] = useState(0);
+  const [rrTotalCount, setRrTotalCount] = useState(0);
   const [joLoading, setJoLoading] = useState(true); // Track if job orders are still loading
   const [srLoading, setSrLoading] = useState(true); // Track if service requests are still loading
   const [poLoading, setPoLoading] = useState(true); // Track if purchase orders are still loading
+  const [rrLoading, setRrLoading] = useState(true); // Track if receiving reports are still loading
   const [srIdsWithJO, setSrIdsWithJO] = useState<Set<string>>(new Set()); // Track SR IDs that have JOs
 
   // Stats counts (independent of filters)
@@ -69,12 +80,14 @@ export default function AdminDashboard() {
   const [inProgressJOCount, setInProgressJOCount] = useState(0);
   const [completedJOCount, setCompletedJOCount] = useState(0);
   const [poCount, setPoCount] = useState(0);
+  const [rrCount, setRrCount] = useState(0);
 
   // Unread notification counts by entity type
   const [unreadNotifications, setUnreadNotifications] = useState({
     SERVICE_REQUEST: 0,
     JOB_ORDER: 0,
-    PURCHASE_ORDER: 0
+    PURCHASE_ORDER: 0,
+    RECEIVING_REPORT: 0
   });
 
   // Track which specific entities have unread notifications
@@ -104,6 +117,12 @@ export default function AdminDashboard() {
     PURCHASED: 0,
     RECEIVED: 0,
     CLOSED: 0
+  });
+  const [rrStatusCounts, setRrStatusCounts] = useState({
+    all: 0,
+    DRAFT: 0,
+    SUBMITTED: 0,
+    COMPLETED: 0
   });
 
   useEffect(() => {
@@ -150,6 +169,14 @@ export default function AdminDashboard() {
         const poData = await poRes.json();
         setPoCount(poData.totalCount || 0);
       }
+
+      // Fetch Receiving Reports count
+      if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
+        (user?.role === 'APPROVER' && (normalizeDept(user.department) === 'purchasing' || normalizeDept(user.department) === 'finance'))) {
+        const rrRes = await fetch(`/api/receiving-reports?limit=1&skip=0`);
+        const rrData = await rrRes.json();
+        setRrCount(rrData.totalCount || 0);
+      }
     } catch (error) {
       console.error('Error fetching stats counts:', error);
     }
@@ -186,6 +213,15 @@ export default function AdminDashboard() {
           setPoTotalCount(poData.totalCount);
         }
       }
+
+      // Fetch Receiving Reports total count
+      if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
+        (user?.role === 'APPROVER' && (normalizeDept(user.department) === 'purchasing' || normalizeDept(user.department) === 'finance'))) {
+        const rrRes = await fetch(`/api/receiving-reports?limit=1000`);
+        const rrData = await rrRes.json();
+        setRrTotalCount(rrData.totalCount || 0);
+      }
+
       // Fetch SR IDs that have Job Orders (for checking if Create JO button should be shown)
       const joDeptParam2 = (user?.role === 'APPROVER' && user?.department) ? `&department=${encodeURIComponent(user.department)}` : '';
       const joSrIdsRes = await fetch(`/api/job-orders?limit=1000&skip=0&status=everything&includeClosed=true${joDeptParam2}`);
@@ -312,6 +348,24 @@ export default function AdminDashboard() {
           CLOSED: poClosed.totalCount || 0
         });
       }
+
+      // Fetch Receiving Reports status counts
+      if (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
+        (user?.role === 'APPROVER' && (normalizeDept(user.department) === 'purchasing' || normalizeDept(user.department) === 'finance'))) {
+        const [rrAll, rrDraft, rrSubmitted, rrCompleted] = await Promise.all([
+          fetch(`/api/receiving-reports?limit=1000`).then(r => r.json()),
+          fetch(`/api/receiving-reports?status=DRAFT&limit=1000`).then(r => r.json()),
+          fetch(`/api/receiving-reports?status=SUBMITTED&limit=1000`).then(r => r.json()),
+          fetch(`/api/receiving-reports?status=COMPLETED&limit=1000`).then(r => r.json()),
+        ]);
+
+        setRrStatusCounts({
+          all: rrAll.totalCount || 0,
+          DRAFT: rrDraft.totalCount || 0,
+          SUBMITTED: rrSubmitted.totalCount || 0,
+          COMPLETED: rrCompleted.totalCount || 0,
+        });
+      }
     } catch (error) {
       console.error('Error fetching status counts:', error);
     }
@@ -365,8 +419,11 @@ export default function AdminDashboard() {
       if (activeTab === 'po') {
         fetchPOData(true);
       }
+      if (activeTab === 'rr') {
+        fetchRRData(true);
+      }
     }
-  }, [user, filterStatus, filterJOStatus, filterPOStatus]);
+  }, [user, filterStatus, filterJOStatus, filterPOStatus, filterRRStatus]);
 
   // Reset when search query changes
   useEffect(() => {
@@ -397,6 +454,11 @@ export default function AdminDashboard() {
         setPurchaseOrders([]);
         setPoHasMore(true);
         fetchPOData(true);
+      } else if (activeTab === 'rr') {
+        setRrSkip(0);
+        setReceivingReports([]);
+        setRrHasMore(true);
+        fetchRRData(true);
       } else if (activeTab === 'sr') {
         // When switching to SR tab, fetch JOs with closed included for accurate checking
         fetchJOData(true, true);
@@ -460,6 +522,8 @@ export default function AdminDashboard() {
             loadMoreJOs();
           } else if (activeTab === 'po' && poHasMore && !poLoadingMore) {
             loadMorePOs();
+          } else if (activeTab === 'rr' && rrHasMore && !rrLoadingMore) {
+            loadMoreRRs();
           }
         }
       }, 100);
@@ -667,6 +731,56 @@ export default function AdminDashboard() {
     }
   };
 
+  const fetchRRData = async (resetRR = false) => {
+    try {
+      if (resetRR) {
+        setRrSkip(0);
+        setReceivingReports([]);
+        setRrHasMore(true);
+        setRrLoading(true); // Set loading when resetting
+      }
+
+      const currentRrSkip = resetRR ? 0 : rrSkip;
+      const statusParam = filterRRStatus === 'all' ? '&status=all' : `&status=${filterRRStatus}`;
+
+      const rrRes = await fetch(`/api/receiving-reports?limit=9&skip=${currentRrSkip}${statusParam}`);
+      const rrData = await rrRes.json();
+
+      // Filter Receiving Reports - Purchasing, Finance, and President can see Receiving Reports
+      let rrs = rrData.receivingReports || [];
+      if (user?.role === 'APPROVER' && user?.department) {
+        const userDeptNorm = normalizeDept(user.department);
+        if (userDeptNorm !== 'purchasing' && userDeptNorm !== 'finance') {
+          rrs = [];
+        }
+      }
+
+      const normalizedRRs = rrs.map((rr: any) => ({
+        ...rr,
+        id: rr._id?.toString() || rr.id,
+        poId: rr.poId,
+      }));
+
+      if (resetRR) {
+        setReceivingReports(normalizedRRs);
+      } else {
+        setReceivingReports(prev => {
+          const existingIds = new Set(prev.map(rr => rr.id || rr._id?.toString()));
+          const newItems = normalizedRRs.filter((rr: ReceivingReport) => !existingIds.has(rr.id || rr._id?.toString()));
+          return [...prev, ...newItems];
+        });
+      }
+
+      const fetchedCount = normalizedRRs.length;
+      setRrHasMore(rrData.hasMore && fetchedCount === 9);
+      setRrSkip(currentRrSkip + fetchedCount);
+    } catch (error) {
+      console.error('Error fetching receiving reports:', error);
+    } finally {
+      setRrLoading(false); // Mark as loaded
+    }
+  };
+
   const loadMoreJOs = async () => {
     if (joLoadingMore || !joHasMore || activeTab !== 'jo' || searchQuery.trim()) return;
     setJoLoadingMore(true);
@@ -688,6 +802,18 @@ export default function AdminDashboard() {
       console.error('Error loading more purchase orders:', error);
     } finally {
       setPoLoadingMore(false);
+    }
+  };
+
+  const loadMoreRRs = async () => {
+    if (rrLoadingMore || !rrHasMore || activeTab !== 'rr' || searchQuery.trim()) return;
+    setRrLoadingMore(true);
+    try {
+      await fetchRRData(false);
+    } catch (error) {
+      console.error('Error loading more receiving reports:', error);
+    } finally {
+      setRrLoadingMore(false);
     }
   };
 
@@ -812,6 +938,57 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleOpenReceivingReportModal = async (po: PurchaseOrder) => {
+    try {
+      // Fetch full PO details to ensure we have all supplier information
+      const response = await fetch(`/api/purchase-orders/${po.id || po._id}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSelectedPO(data.purchaseOrder);
+        setShowCreateRR(true);
+      } else {
+        toast.showError('Failed to fetch Purchase Order details');
+      }
+    } catch (error) {
+      console.error('Error fetching PO details:', error);
+      toast.showError('Failed to fetch Purchase Order details');
+    }
+  };
+
+  const handleCreateReceivingReport = async (data: any) => {
+    if (!selectedPO) return;
+
+    try {
+      const response = await fetch('/api/receiving-reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          poId: selectedPO.id || selectedPO._id,
+          ...data,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setShowCreateRR(false);
+        setSelectedPO(null);
+        toast.showSuccess(`Receiving Report ${result.receivingReport.rrNumber} created successfully!`);
+        // Refresh receiving reports
+        if (activeTab === 'rr') {
+          fetchRRData(true);
+        }
+        // Optionally navigate to the new RR
+        router.push(`/receiving-reports/${result.receivingReport._id || result.receivingReport.id}`);
+      } else {
+        const error = await response.json();
+        toast.showError(error.error || 'Failed to create Receiving Report');
+      }
+    } catch (error) {
+      console.error('Error creating Receiving Report:', error);
+      toast.showError('Failed to create Receiving Report');
+    }
+  };
+
   // Show loading until user is confirmed
   if (loading || !user) {
     return (
@@ -830,7 +1007,7 @@ export default function AdminDashboard() {
   const completedJOs = jobOrders.filter(jo => jo.status === 'COMPLETED');
 
   // Search filter functions
-  const filterBySearch = (items: any[], type: 'sr' | 'jo' | 'po') => {
+  const filterBySearch = (items: any[], type: 'sr' | 'jo' | 'po' | 'rr') => {
     if (!searchQuery.trim()) return items;
 
     const query = searchQuery.toLowerCase().trim();
@@ -863,6 +1040,15 @@ export default function AdminDashboard() {
           item.status?.toLowerCase().includes(query) ||
           item.supplierName?.toLowerCase().includes(query) ||
           item.jobOrder?.joNumber?.toLowerCase().includes(query)
+        );
+      } else if (type === 'rr') {
+        return (
+          item.rrNumber?.toLowerCase().includes(query) ||
+          item.department?.toLowerCase().includes(query) ||
+          item.status?.toLowerCase().includes(query) ||
+          item.supplierName?.toLowerCase().includes(query) ||
+          item.createdFrom?.toLowerCase().includes(query) ||
+          item.receivedByName?.toLowerCase().includes(query)
         );
       }
       return false;
@@ -967,6 +1153,23 @@ export default function AdminDashboard() {
                     )}
                   </button>
                 )}
+
+              {/* Show Receiving Reports tab to Purchasing, Finance, President, ADMIN, and SUPER_ADMIN */}
+              {(user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
+                (user?.role === 'APPROVER' && (normalizeDept(user?.department) === 'purchasing' || normalizeDept(user?.department) === 'finance'))) && (
+                  <button
+                    onClick={() => setActiveTab('rr')}
+                    className={`py-4 px-1 border-b-2 font-medium text-sm relative inline-flex items-center gap-1 ${activeTab === 'rr'
+                      ? 'border-purple-500 text-purple-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                  >
+                    <span>Receiving Reports ({rrTotalCount})</span>
+                    {unreadNotifications.RECEIVING_REPORT > 0 && (
+                      <span className="h-2 w-2 bg-red-500 rounded-full flex-shrink-0"></span>
+                    )}
+                  </button>
+                )}
             </nav>
           </div>
         </div>
@@ -978,7 +1181,12 @@ export default function AdminDashboard() {
             <div className="relative">
               <input
                 type="text"
-                placeholder={`Search ${activeTab === 'sr' ? 'Service Requests' : activeTab === 'jo' ? 'Job Orders' : 'Purchase Orders'}...`}
+                placeholder={`Search ${
+                  activeTab === 'sr' ? 'Service Requests' : 
+                  activeTab === 'jo' ? 'Job Orders' : 
+                  activeTab === 'po' ? 'Purchase Orders' :
+                  activeTab === 'rr' ? 'Receiving Reports' : ''
+                }...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full px-4 py-2 pl-10 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base"
@@ -1054,6 +1262,22 @@ export default function AdminDashboard() {
                   <option value="all">All ({poStatusCounts.all})</option>
                   <option value="PURCHASED">Pending ({poStatusCounts.PURCHASED})</option>
                   <option value="RECEIVED">Received ({poStatusCounts.RECEIVED})</option>
+                </select>
+              </div>
+            )}
+          {/* Show Receiving Reports filter to Purchasing, Finance, President, ADMIN, and SUPER_ADMIN */}
+          {activeTab === 'rr' && (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
+            (user?.role === 'APPROVER' && (normalizeDept(user?.department) === 'purchasing' || normalizeDept(user?.department) === 'finance'))) && (
+              <div className="sm:w-auto">
+                <select
+                  value={filterRRStatus}
+                  onChange={(e) => setFilterRRStatus(e.target.value)}
+                  className="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm sm:text-base"
+                >
+                  <option value="all">All ({rrStatusCounts.all})</option>
+                  <option value="DRAFT">Draft ({rrStatusCounts.DRAFT})</option>
+                  <option value="SUBMITTED">Submitted ({rrStatusCounts.SUBMITTED})</option>
+                  <option value="COMPLETED">Completed ({rrStatusCounts.COMPLETED})</option>
                 </select>
               </div>
             )}
@@ -1241,6 +1465,7 @@ export default function AdminDashboard() {
                             purchaseOrder={po}
                             currentUser={user}
                             hasUnreadNotification={unreadEntityIds.has(poIdString)}
+                            onCreateReceivingReport={handleOpenReceivingReportModal}
                           />
                         </div>
                       );
@@ -1257,6 +1482,51 @@ export default function AdminDashboard() {
                       {searchQuery || filterPOStatus !== 'all'
                         ? 'No purchase orders match your criteria.'
                         : 'No purchase orders found.'}
+                    </p>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+        {/* Show Receiving Reports content to Purchasing, Finance, President, ADMIN, and SUPER_ADMIN */}
+        {activeTab === 'rr' && (user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN' ||
+          (user?.role === 'APPROVER' && (normalizeDept(user?.department) === 'purchasing' || normalizeDept(user?.department) === 'finance'))) && (
+            <div>
+              {(() => {
+                let filteredRRs = filterBySearch(receivingReports, 'rr');
+
+                // Apply status filter
+                if (filterRRStatus !== 'all') {
+                  filteredRRs = filteredRRs.filter((rr) => rr.status === filterRRStatus);
+                }
+
+                return filteredRRs.length > 0 ? (
+                  <div className="columns-1 md:columns-2 lg:columns-3 gap-4 sm:gap-6">
+                    {filteredRRs.map((rr) => {
+                      const rrId = rr.id || rr._id || '';
+                      const rrIdString = rrId.toString();
+                      return (
+                        <div key={rrId} className="break-inside-avoid mb-4 sm:mb-6">
+                          <ReceivingReportCard
+                            receivingReport={rr}
+                            hasUnreadNotification={unreadEntityIds.has(rrIdString)}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : rrLoading ? (
+                  <div className="bg-white rounded-lg shadow-md p-12 text-center">
+                    <LoadingSpinner size="48" speed="1.4" color="#9333ea" />
+                    <p className="text-gray-500 mt-4">Loading receiving reports...</p>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-lg shadow-md p-12 text-center">
+                    <p className="text-gray-500">
+                      {searchQuery || filterRRStatus !== 'all'
+                        ? 'No receiving reports match your criteria.'
+                        : 'No receiving reports found.'}
                     </p>
                   </div>
                 );
@@ -1292,6 +1562,18 @@ export default function AdminDashboard() {
               />
             </div>
           </div>
+        )}
+
+        {/* Create Receiving Report Form Modal */}
+        {showCreateRR && selectedPO && (
+          <ReceivingReportForm
+            purchaseOrder={selectedPO}
+            onSubmit={handleCreateReceivingReport}
+            onCancel={() => {
+              setShowCreateRR(false);
+              setSelectedPO(null);
+            }}
+          />
         )}
       </main>
     </div>

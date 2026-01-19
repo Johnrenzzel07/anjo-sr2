@@ -8,6 +8,7 @@ interface PurchaseOrderCardProps {
   purchaseOrder: PurchaseOrder;
   currentUser?: { role?: string; department?: string };
   hasUnreadNotification?: boolean;
+  onCreateReceivingReport?: (po: PurchaseOrder) => void;
 }
 
 // Normalize department name for comparison
@@ -15,7 +16,7 @@ function normalizeDept(dept: string | undefined): string {
   return (dept || '').toLowerCase().replace(/\s+department$/, '').trim();
 }
 
-export default function PurchaseOrderCard({ purchaseOrder, currentUser, hasUnreadNotification = false }: PurchaseOrderCardProps) {
+export default function PurchaseOrderCard({ purchaseOrder, currentUser, hasUnreadNotification = false, onCreateReceivingReport }: PurchaseOrderCardProps) {
   const joNumber = typeof purchaseOrder.joId === 'object'
     ? (purchaseOrder.joId as any)?.joNumber
     : 'N/A';
@@ -34,12 +35,18 @@ export default function PurchaseOrderCard({ purchaseOrder, currentUser, hasUnrea
   const isPurchasing = userDepartment === 'purchasing';
   const canProceedWithPurchasing = purchaseOrder.status === 'APPROVED' && isPurchasing;
 
+  // Check if can create receiving report
+  const canCreateReceivingReport = purchaseOrder.status === 'RECEIVED' && 
+    (userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || isPurchasing);
+
   // Determine border color based on action needed
   const borderClass = needsPresidentApproval
     ? 'border-yellow-400 animate-border-pulse'
     : canProceedWithPurchasing
       ? 'border-green-500 animate-border-pulse-green'
-      : 'border-gray-200';
+      : canCreateReceivingReport
+        ? 'border-purple-500 animate-border-pulse-purple'
+        : 'border-gray-200';
 
   const handleCardClick = async () => {
     // Mark notifications as read if needed
@@ -58,6 +65,14 @@ export default function PurchaseOrderCard({ purchaseOrder, currentUser, hasUnrea
       } catch (error) {
         console.error('Error marking notifications as read:', error);
       }
+    }
+  };
+
+  const handleCreateRRClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onCreateReceivingReport) {
+      onCreateReceivingReport(purchaseOrder);
     }
   };
 
@@ -98,6 +113,23 @@ export default function PurchaseOrderCard({ purchaseOrder, currentUser, hasUnrea
               </div>
             </div>
           </div>
+        )}
+
+        {canCreateReceivingReport && (
+          <button
+            onClick={handleCreateRRClick}
+            className="mb-4 w-full p-3 bg-purple-50 border-2 border-purple-300 rounded-md hover:bg-purple-100 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 text-purple-600 flex-shrink-0 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <div className="flex-1 text-left">
+                <p className="text-sm font-semibold text-purple-800">Create Receiving Report</p>
+                <p className="text-xs text-purple-700">Items have been received. Click to document the receipt.</p>
+              </div>
+            </div>
+          </button>
         )}
 
         <div className="space-y-2 mb-4">

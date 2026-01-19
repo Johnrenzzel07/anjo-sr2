@@ -136,6 +136,20 @@
   }
 }
 
+@keyframes border-pulse-purple {
+
+  0%,
+  100% {
+    border-color: rgb(168, 85, 247);
+    box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4);
+  }
+
+  50% {
+    border-color: rgb(147, 51, 234);
+    box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.2);
+  }
+}
+
 .animate-pulse-glow {
   animation: pulse-glow 2s ease-in-out infinite;
 }
@@ -166,6 +180,10 @@
 
 .animate-border-pulse-orange {
   animation: border-pulse-orange 2s ease-in-out infinite;
+}
+
+.animate-border-pulse-purple {
+  animation: border-pulse-purple 2s ease-in-out infinite;
 }
 
 .approval-highlight {

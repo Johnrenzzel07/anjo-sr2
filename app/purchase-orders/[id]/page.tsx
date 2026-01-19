@@ -7,6 +7,7 @@ import Link from 'next/link';
 
 import LoadingSpinner from '@/components/LoadingSpinner';
 import StatusModal from '@/components/StatusModal';
+import ReceivingReportForm from '@/components/ReceivingReportForm';
 import {
   PODetailsSection,
   POItemsTable,
@@ -16,6 +17,7 @@ import {
   formatCurrency,
   getPriorityBadgeStyle
 } from '@/components/PurchaseOrder';
+import { useToast } from '@/components/ToastContainer';
 
 interface ModalState {
   isOpen: boolean;
@@ -27,10 +29,12 @@ interface ModalState {
 export default function PurchaseOrderDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const toast = useToast();
 
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<{ role: UserRole; id: string; name: string; department?: string } | null>(null);
+  const [showCreateRR, setShowCreateRR] = useState(false);
 
   // Status modal state
   const [statusModal, setStatusModal] = useState<ModalState>({
@@ -129,7 +133,34 @@ export default function PurchaseOrderDetailPage() {
     window.print();
   };
 
+  // Create Receiving Report
+  const handleCreateReceivingReport = async (data: any) => {
+    if (!purchaseOrder) return;
 
+    try {
+      const response = await fetch('/api/receiving-reports', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          poId: purchaseOrder.id || purchaseOrder._id,
+          ...data,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setShowCreateRR(false);
+        toast.showSuccess(`Receiving Report ${result.receivingReport.rrNumber} created successfully!`);
+        router.push(`/receiving-reports/${result.receivingReport._id || result.receivingReport.id}`);
+      } else {
+        const error = await response.json();
+        toast.showError(error.error || 'Failed to create Receiving Report');
+      }
+    } catch (error) {
+      console.error('Error creating Receiving Report:', error);
+      toast.showError('Failed to create Receiving Report');
+    }
+  };
 
   const handleItemDeliveryDateChange = async (index: number, newDate: string) => {
     if (!purchaseOrder || !newDate) return;
@@ -215,6 +246,22 @@ export default function PurchaseOrderDetailPage() {
           <POItemsTable purchaseOrder={purchaseOrder} />
 
           <POApprovalsSection purchaseOrder={purchaseOrder} />
+
+          {/* Create Receiving Report Button */}
+          {purchaseOrder.status === 'RECEIVED' && 
+           currentUser && 
+           (currentUser.role === 'ADMIN' || 
+            currentUser.role === 'SUPER_ADMIN' || 
+            (currentUser.role === 'APPROVER' && currentUser.department === 'Purchasing')) && (
+            <div className="mt-6 pt-6 border-t border-gray-200 no-print">
+              <button
+                onClick={() => setShowCreateRR(true)}
+                className="w-full sm:w-auto px-6 py-3 bg-purple-600 text-white rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 font-medium transition-colors"
+              >
+                Create Receiving Report
+              </button>
+            </div>
+          )}
 
           <POActionsSection
             purchaseOrder={purchaseOrder}
@@ -367,6 +414,15 @@ export default function PurchaseOrderDetailPage() {
       `}</style>
         </div>
       </div>
+
+      {/* Receiving Report Form Modal */}
+      {showCreateRR && purchaseOrder && (
+        <ReceivingReportForm
+          purchaseOrder={purchaseOrder}
+          onSubmit={handleCreateReceivingReport}
+          onCancel={() => setShowCreateRR(false)}
+        />
+      )}
     </div>
   );
 }

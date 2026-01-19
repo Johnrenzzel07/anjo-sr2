@@ -293,3 +293,93 @@ export interface CreatePurchaseOrderInput {
   tax?: number;
   expectedDeliveryDate?: string;
 }
+
+// Receiving Report Types
+export type RRStatus = 'DRAFT' | 'SUBMITTED' | 'COMPLETED';
+
+export interface ReceivingReportItem {
+  id: string;
+  poItemId: string; // Reference to PurchaseOrderItem
+  item: string;
+  description: string;
+  orderedQuantity: number;
+  receivedQuantity: number;
+  unit: string;
+  size?: string;
+  color?: string;
+  unitPrice: number;
+  totalPrice: number;
+  onHandQuantity?: number; // Current inventory
+  toLocation?: string; // Where it's being received
+  vendorName?: string;
+  rate?: number;
+  currency?: string;
+  notes?: string;
+}
+
+export interface ReceivingReport {
+  id?: string;
+  _id?: string;
+  rrNumber: string; // RR-YYYYMMDD-XXXX
+  poId: string;
+  purchaseOrder?: PurchaseOrder;
+  
+  // Primary Information
+  referenceNumber?: string;
+  createdFrom: string; // PO Number
+  postingPeriod?: string;
+  supplierName: string;
+  supplierContact?: string;
+  supplierAddress?: string;
+  date: string;
+  memo?: string;
+  
+  // POS Information
+  storeNo?: string;
+  terminalNo?: string;
+  originalPONumber?: string;
+  
+  // Classification
+  division?: string;
+  toLocation?: string;
+  class?: string;
+  department: string;
+  subsidiary?: string;
+  
+  // Financial
+  exchangeRate?: number;
+  subtotal: number;
+  tax?: number;
+  totalAmount: number;
+  
+  // Items
+  items: ReceivingReportItem[];
+  
+  // Status
+  status: RRStatus;
+  
+  // Receiver Information
+  receivedBy: string;
+  receivedByName: string;
+  actualDeliveryDate: string;
+  deliveryNotes?: string;
+  
+  // Metadata
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateReceivingReportInput {
+  poId: string;
+  items: ReceivingReportItem[];
+  actualDeliveryDate: string;
+  deliveryNotes?: string;
+  storeNo?: string;
+  terminalNo?: string;
+  division?: string;
+  toLocation?: string;
+  class?: string;
+  subsidiary?: string;
+  exchangeRate?: number;
+  memo?: string;
+}

@@ -141,11 +141,6 @@ PurchaseOrderSchema.pre('save', async function () {
   this.updatedAt = new Date().toISOString();
 });
 
-// Forcefully clear the model cache in development to ensure enum updates are picked up
-if (process.env.NODE_ENV === 'development' && models.PurchaseOrder) {
-  delete (models as any).PurchaseOrder;
-}
-
 const PurchaseOrder = models.PurchaseOrder || model<IPurchaseOrder>('PurchaseOrder', PurchaseOrderSchema);
 export default PurchaseOrder;
 

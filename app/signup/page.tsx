@@ -31,6 +31,61 @@ export default function SignupPage() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // PWA Install Prompt State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallBtn, setShowInstallBtn] = useState(false);
+
+  useEffect(() => {
+    // Check if already installed
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
+                        (window.navigator as any).standalone || 
+                        document.referrer.includes('android-app://');
+    
+    if (isStandalone) {
+      setShowInstallBtn(false);
+      return;
+    }
+
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setShowInstallBtn(true);
+    };
+    
+    // Add event listener
+    window.addEventListener('beforeinstallprompt', handler);
+    
+    // Check if the event was already fired before we set up the listener
+    // Some browsers store this on the window object
+    const checkForExistingPrompt = () => {
+      if ((window as any).deferredPrompt) {
+        setDeferredPrompt((window as any).deferredPrompt);
+        setShowInstallBtn(true);
+      }
+    };
+    
+    // Check immediately
+    checkForExistingPrompt();
+    
+    // Also check after a short delay to catch race conditions
+    const timeoutId = setTimeout(checkForExistingPrompt, 100);
+    
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+      setShowInstallBtn(false);
+    }
+  };
+
   // If already authenticated, redirect away from signup
   useEffect(() => {
     const checkAuth = async () => {
@@ -247,13 +302,29 @@ export default function SignupPage() {
             </button>
           </div>
 
-          <div className="text-center">
+          {/* PWA Install Action */}
+          <div className="text-center space-y-4">
             <p className="text-sm text-gray-600">
               Already have an account?{' '}
               <Link href="/login" className="font-medium text-purple-600 hover:text-purple-500">
                 Sign in
               </Link>
             </p>
+
+            {showInstallBtn && (
+              <div className="pt-2 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={handleInstallClick}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Install App to Mobile/Desktop
+                </button>
+              </div>
+            )}
           </div>
         </form>
       </div>
